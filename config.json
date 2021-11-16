@@ -1,0 +1,11 @@
+{
+    "root_site": "https://www.collectedcurios.com/",
+    "BD_name": "SA",
+    "ends": "small",
+    "extra": "b",
+    "ext": ".jpg",
+    "folder_save_dl": "DL/",
+    "folder_save_upscale": "UPSCALE/",
+    "folder_models": "models/",
+    "model_nbr": 7
+}
