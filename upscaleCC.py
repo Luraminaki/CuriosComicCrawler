@@ -41,7 +41,7 @@ FOLDER_SAVE_DL_BD_NAME.mkdir(exist_ok=True)
 FOLDER_SAVE_UPSCALE_BD_NAME.mkdir(exist_ok=True)
 
 
-def area_posterise(input_image: np.ndarray, nbr_cluster=32, nbr_iterations=10) -> np.ndarray:
+def area_posterise(input_image: np.ndarray, nbr_cluster: int=32, nbr_iterations: int=10) -> np.ndarray:
     """Quantization function.
 
     Args:
@@ -54,7 +54,7 @@ def area_posterise(input_image: np.ndarray, nbr_cluster=32, nbr_iterations=10) -
     """
     curr_func = inspect.currentframe().f_code.co_name
 
-    if nbr_cluster > 1 and nbr_cluster < 255:
+    if 1 < nbr_cluster < 255:
         area_to_posterise_line = input_image.reshape((-1, 3))
         area_to_posterise_line = np.float32(area_to_posterise_line)
 
@@ -67,20 +67,19 @@ def area_posterise(input_image: np.ndarray, nbr_cluster=32, nbr_iterations=10) -
 
         return posterised_area_to_posterise
 
-    else:
-        print(f"{curr_func} -- Change the value of the following parameter 'nbr_cluster' (1 ~ 255)")
+    print(f"{curr_func} -- Change the value of the following parameter 'nbr_cluster' (1 ~ 255)")
 
-        return input_image
+    return input_image
 
-def sharpen_image(image: np.ndarray, ksize_1=7, ksize_2=7, sigma_1=1, sigma_2=2) -> np.ndarray:
+def sharpen_image(image: np.ndarray, ksize_1: int=7, ksize_2: int=7, sigma_1: float=1., sigma_2: float=2.) -> np.ndarray:
     """Function that sharpen an image.
 
     Args:
         image (np.ndarray): Input image (BGR).
         ksize_1 (int, optional): Kernel n°1 size (Odd number). Defaults to 7.
         ksize_2 (int, optional): Kernel n°2 size (Odd number). Defaults to 7.
-        sigma_1 (int, optional): Blur value n°1. Defaults to 1.
-        sigma_2 (int, optional): Blur value n°2. Defaults to 2.
+        sigma_1 (float, optional): Blur value n°1. Defaults to 1.
+        sigma_2 (float, optional): Blur value n°2. Defaults to 2.
 
     Returns:
         np.ndarray: Sharpned image.
