@@ -91,6 +91,13 @@ def sharpen_image(image: np.ndarray, ksize_1=7, ksize_2=7, sigma_1=1, sigma_2=2)
 
 
 def main() -> None:
+    """main function. Simply call it.
+
+    Args:
+
+    Returns:
+        None: None.
+    """
     curr_func = inspect.currentframe().f_code.co_name
 
     # Get small pictures

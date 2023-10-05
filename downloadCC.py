@@ -83,6 +83,13 @@ def dl_and_save_img(link: str, save_path: str) -> bool:
 
 
 def main() -> None:
+    """main function. Simply call it.
+
+    Args:
+
+    Returns:
+        None: None.
+    """
     curr_func = inspect.currentframe().f_code.co_name
 
     last_nbr_available = get_last_saved(folder_save_dl + BD_name + "/")
