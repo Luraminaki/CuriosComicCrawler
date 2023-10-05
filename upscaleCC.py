@@ -61,7 +61,7 @@ def area_posterise(input_image: np.ndarray, nbr_cluster=32, nbr_iterations=10) -
         return posterised_area_to_posterise
 
     else:
-        print("{} -- Change the value of the following parameter 'nbr_cluster' (1 ~ 255)".format(curr_func))
+        print(f"{curr_func} -- Change the value of the following parameter 'nbr_cluster' (1 ~ 255)")
 
         return input_image
 
@@ -110,7 +110,7 @@ def main() -> None:
         model_path = models[model]
         model_name = os.path.basename(model_path).split(".", maxsplit=1)[0].split("_", maxsplit=1)[0].lower()
         model_scale = int(os.path.basename(model_path).split(".", maxsplit=1)[0].split("_", maxsplit=1)[1].replace("x", ""))
-        print("{} -- Using model {} with {} scaling...".format(curr_func, model_name, model_scale))
+        print(f"{curr_func} -- Using model {model_name} with {model_scale} scaling...")
 
         # Prepare model
         sup_res = cv2.dnn_superres.DnnSuperResImpl_create()
@@ -122,17 +122,17 @@ def main() -> None:
             tic = time.time()
 
             img_name = os.path.basename(img_path)
-            print("{} -- Loading image {}".format(curr_func, img_name))
+            print(f"{curr_func} -- Loading image {img_name}")
             img = cv2.imread(img_path, cv2.IMREAD_COLOR)
 
-            print("{} -- Upscaling image {}".format(curr_func, img_name))
+            print(f"{curr_func} -- Upscaling image {img_name}")
             result = sup_res.upsample(img)
 
-            print("{} -- Cleaning image {}".format(curr_func, img_name))
+            print(f"{curr_func} -- Cleaning image {img_name}")
             img = area_posterise(img)
             img = sharpen_image(img)
 
-            print("{} -- Saving image {}".format(curr_func, img_name))
+            print(f"{curr_func} -- Saving image {img_name}")
             cv2.imwrite((folder_save_upscale + BD_name + "/" + img_name), result)
 
             tac = time.time()
@@ -148,10 +148,10 @@ def main() -> None:
             min = int(total/(60))%60
             sec = int(total)%60
 
-            print("{} -- Image {} upscaled in {} second(s). \n\t Estimated remaining time: {}d - {}h:{}m:{}s\n".format(curr_func, img_name, toc, day, hour, min, sec))
+            print(f"{curr_func} -- Image {img_name} upscaled in {toc} second(s). \n\t Estimated remaining time: {days}d - {hours}h:{minutes}m:{seconds}s\n")
 
     else:
-        print("{} -- Model n°{} not found in the `data/models/` folder...".format(curr_func, model))
+        print(f"{curr_func} -- Model n°{MODEL} not found in the `data/models/` folder...")
 
 
 if __name__ == '__main__':

@@ -70,7 +70,7 @@ def dl_and_save_img(link: str, save_path: str) -> bool:
 
     resource = requests.get(link, stream=True)
     if resource.ok:
-        print("{} -- Saving: {}\n".format(curr_func, os.path.basename(save_path)))
+        print(f"{curr_func} -- Saving: {os.path.basename(save_path)}\n")
 
         with open(save_path, "wb") as img:
             for chunk in resource.iter_content(1024):
@@ -78,7 +78,7 @@ def dl_and_save_img(link: str, save_path: str) -> bool:
         return True
 
     else:
-        print("{} -- Image not found".format(curr_func))
+        print(f"{curr_func} -- Image not found")
         return False
 
 
@@ -86,7 +86,7 @@ def main() -> None:
     curr_func = inspect.currentframe().f_code.co_name
 
     last_nbr_available = get_last_saved(folder_save_dl + BD_name + "/")
-    print("{} -- Last downloaded: {}".format(curr_func, last_nbr_available))
+    print(f"{curr_func} -- Last downloaded: {last_nbr_available}")
 
     cptr = last_nbr_available + 1
     nbr_zeros = 4
@@ -104,15 +104,15 @@ def main() -> None:
         image_name = BD_name + "_" + pic_nbr + "_" + ends + ext
         image_name_b = BD_name + "_" + pic_nbr + "_" + ends + "_" + extra + ext
 
-        print("{} -- Downloading: {}".format(curr_func, image_name))
+        print(f"{curr_func} -- Downloading: {image_name}")
         ret = dl_and_save_img(root_site + image_name, folder_save_dl + BD_name + "/" + image_name)
 
         if not ret:
-            print("{} -- Failed with {} Retrying with {}".format(curr_func, image_name, image_name_b))
+            print(f"{curr_func} -- Failed with {image_name} Retrying with {image_name_b}")
             ret_b = dl_and_save_img(root_site + image_name_b, folder_save_dl + BD_name + "/" + image_name)
 
             if not ret_b:
-                print(("{} -- Nothing to download. Process aborting...".format(curr_func)))
+                print((f"{curr_func} -- Nothing to download. Process aborting..."))
                 break
 
         time.sleep(1)
