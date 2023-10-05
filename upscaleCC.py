@@ -140,7 +140,8 @@ def main() -> None:
             toc = toc / 100
 
             # Estimate remaining time to complete the task
-            total = toc * (len(originals[len(completed):]) - cptr)
+            total = toc * ((len(originals[len(completed):]) - cptr) - 1)
+            total = total if total > 0 else 0
 
             day = int(total/(60*60*24))
             hour = int(total/(60*60))%24
