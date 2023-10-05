@@ -61,7 +61,7 @@ def area_posterise(input_image: np.ndarray, nbr_cluster=32, nbr_iterations=10) -
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
         flags = cv2.KMEANS_RANDOM_CENTERS
         _, labels, centers = cv2.kmeans(area_to_posterise_line, nbr_cluster, None, criteria, nbr_iterations, flags)
-        centers = np.uint8(centers)
+        centers.astype(np.uint8)
         res = centers[labels.flatten()]
         posterised_area_to_posterise = res.reshape((np.shape(input_image)))
 
