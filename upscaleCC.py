@@ -7,31 +7,38 @@ Created on Tue Nov 16 18:45:31 2021
 """
 
 #===================================================================================================
-import os
 import time
-import glob
 import json
 import inspect
+import pathlib
 
 import cv2
 import numpy as np
 #===================================================================================================
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
-data_folder = "./data/"
+CWD = pathlib.Path.cwd()
 
-with open("config.json", encoding='utf-8') as f:
+DATA_FOLDER = "data/"
+CONFIG_FILE = "config.json"
+
+with open(CWD/CONFIG_FILE, encoding='utf-8') as f:
     conf = json.load(f)
 
-BD_name = conf["BD_name"]
-ext = conf["ext"]
-folder_save_dl = data_folder + conf["folder_save_dl"]
-folder_models = data_folder + conf["folder_models"]
-folder_save_upscale = data_folder + conf["folder_save_upscale"]
-model = conf["model_nbr"]
+BD_NAME: str = conf["BD_name"]
+EXT: str = conf["ext"]
 
-os.makedirs(folder_save_dl + BD_name + "/", exist_ok=True)
-os.makedirs(folder_save_upscale + BD_name + "/", exist_ok=True)
+MODEL: int = conf["model_nbr"]
+FOLDER_MODELS: pathlib.Path = CWD/DATA_FOLDER/conf["folder_models"]
+
+FOLDER_SAVE_DL: pathlib.Path = CWD/DATA_FOLDER/conf["folder_save_dl"]
+FOLDER_SAVE_UPSCALE: pathlib.Path = CWD/DATA_FOLDER/conf["folder_save_upscale"]
+
+FOLDER_SAVE_DL_BD_NAME: pathlib.Path = FOLDER_SAVE_DL/BD_NAME
+FOLDER_SAVE_UPSCALE_BD_NAME: pathlib.Path = FOLDER_SAVE_UPSCALE/BD_NAME
+
+FOLDER_SAVE_DL_BD_NAME.mkdir(exist_ok=True)
+FOLDER_SAVE_UPSCALE_BD_NAME.mkdir(exist_ok=True)
 
 
 def area_posterise(input_image: np.ndarray, nbr_cluster=32, nbr_iterations=10) -> np.ndarray:
@@ -101,46 +108,45 @@ def main() -> None:
     curr_func = inspect.currentframe().f_code.co_name
 
     # Get small pictures
-    originals = glob.glob(folder_save_dl + BD_name + '/*' + ext)
+    originals = list(FOLDER_SAVE_DL_BD_NAME.glob("*" + EXT))
     originals.sort()
 
     # Get completed pictures
-    completed = glob.glob(folder_save_upscale + BD_name + '/*' + ext)
+    completed = list(FOLDER_SAVE_UPSCALE_BD_NAME.glob("*" + EXT))
 
     # Get trained models
-    models = glob.glob(folder_models + "*.pb")
+    models = list(FOLDER_MODELS.glob("*.pb"))
     models.sort()
 
-    if len(models) >= model:
+    if len(models) >= MODEL:
 
         # Select model
-        model_path = models[model]
-        model_name = os.path.basename(model_path).split(".", maxsplit=1)[0].split("_", maxsplit=1)[0].lower()
-        model_scale = int(os.path.basename(model_path).split(".", maxsplit=1)[0].split("_", maxsplit=1)[1].replace("x", ""))
+        model_path = models[MODEL]
+        model_name = model_path.stem.split("_", maxsplit=1)[0].lower()
+        model_scale = model_path.stem.split("_")[-1].replace("x", "")
         print(f"{curr_func} -- Using model {model_name} with {model_scale} scaling...")
 
         # Prepare model
         sup_res = cv2.dnn_superres.DnnSuperResImpl_create()
-        sup_res.readModel(model_path)
-        sup_res.setModel(model_name, model_scale)
+        sup_res.readModel(str(model_path))
+        sup_res.setModel(model_name, int(model_scale))
 
         # Compute / Upscale / Clean each small image
         for cptr, img_path in enumerate(originals[len(completed):]):
             tic = time.time()
 
-            img_name = os.path.basename(img_path)
-            print(f"{curr_func} -- Loading image {img_name}")
-            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            print(f"{curr_func} -- Loading image {img_path.name}")
+            img = cv2.imread(str(img_path), cv2.IMREAD_COLOR)
 
-            print(f"{curr_func} -- Upscaling image {img_name}")
+            print(f"{curr_func} -- Upscaling image {img_path.name}")
             result = sup_res.upsample(img)
 
-            print(f"{curr_func} -- Cleaning image {img_name}")
+            print(f"{curr_func} -- Cleaning image {img_path.name}")
             img = area_posterise(img)
             img = sharpen_image(img)
 
-            print(f"{curr_func} -- Saving image {img_name}")
-            cv2.imwrite((folder_save_upscale + BD_name + "/" + img_name), result)
+            print(f"{curr_func} -- Saving image {img_path.name}")
+            cv2.imwrite(str(FOLDER_SAVE_UPSCALE_BD_NAME/img_path.name), result)
 
             tac = time.time()
             toc = int((tac - tic)*100)
@@ -150,12 +156,12 @@ def main() -> None:
             total = toc * ((len(originals[len(completed):]) - cptr) - 1)
             total = total if total > 0 else 0
 
-            day = int(total/(60*60*24))
-            hour = int(total/(60*60))%24
-            min = int(total/(60))%60
-            sec = int(total)%60
+            days = int(total/(60*60*24))
+            hours = int(total/(60*60))%24
+            minutes = int(total/(60))%60
+            seconds = int(total)%60
 
-            print(f"{curr_func} -- Image {img_name} upscaled in {toc} second(s). \n\t Estimated remaining time: {days}d - {hours}h:{minutes}m:{seconds}s\n")
+            print(f"{curr_func} -- Image {img_path.name} upscaled in {toc} second(s). \n\t Estimated remaining time: {days}d - {hours}h:{minutes}m:{seconds}s\n")
 
     else:
         print(f"{curr_func} -- Model n°{MODEL} not found in the `data/models/` folder...")
