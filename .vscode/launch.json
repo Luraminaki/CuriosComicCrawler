@@ -1,0 +1,52 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.1.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "DCC",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/downloadCC.py",
+            "args": ["--configuration=${workspaceFolder}/config.json"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "debugOptions": [
+                "WaitOnAbnormalExit",
+                "WaitOnNormalExit",
+                //"Sudo"
+            ]
+        },
+        {
+            "name": "UCC",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/upscaleCC.py",
+            "args": ["--configuration=${workspaceFolder}/config.json"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "debugOptions": [
+                "WaitOnAbnormalExit",
+                "WaitOnNormalExit",
+                //"Sudo"
+            ]
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Soon",
+            "configurations": [
+                "DCC",
+                "UCC"
+            ]
+        }
+    ]
+}
