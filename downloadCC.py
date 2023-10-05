@@ -7,47 +7,55 @@ Created on Tue Nov 16 18:45:31 2021
 """
 
 #===================================================================================================
-import os
 import time
-import glob
 import json
 import inspect
+import pathlib
 
 import requests
 #===================================================================================================
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
-data_folder = "./data/"
+CWD = pathlib.Path.cwd()
 
-with open("config.json", encoding='utf-8') as f:
+DATA_FOLDER = "data/"
+CONFIG_FILE = "config.json"
+
+with open(CWD/CONFIG_FILE, encoding='utf-8') as f:
     conf = json.load(f)
 
-root_site = conf["root_site"]
-BD_name = conf["BD_name"]
-ends = conf["ends"]
-extra = conf["extra"]
-ext = conf["ext"]
-folder_save_dl = data_folder + conf["folder_save_dl"]
+BD_NAME: str = conf["BD_name"]
+EXT: str = conf["ext"]
 
-os.makedirs(folder_save_dl + BD_name + "/", exist_ok=True)
+ROOT_SITE: str = conf["root_site"]
+
+ENDS: str = conf["ends"]
+EXTRA: str = conf["extra"]
+
+FOLDER_SAVE_DL: pathlib.Path = CWD/DATA_FOLDER/conf["folder_save_dl"]
+
+FOLDER_SAVE_DL_BD_NAME: pathlib.Path = FOLDER_SAVE_DL/BD_NAME
+
+FOLDER_SAVE_DL_BD_NAME.mkdir(exist_ok=True)
 
 
-def get_last_saved(save_path: str) -> int:
+def get_last_saved(save_path: pathlib.Path) -> int:
     """Function that will retrieve the last saved file's number.
 
     Args:
-        save_path (str): Images path.
+        save_path (pathlib.Path): Images path.
 
     Returns:
         int: Last saved number.
     """
     curr_func = inspect.currentframe().f_code.co_name
 
-    available = glob.glob(save_path + '*.jpg')
+    available = list(save_path.glob("*.jpg"))
     if len(available) > 0:
         available.sort()
-        last_nbr_available = os.path.basename(available[-1]).split('_')[1]
+        last_nbr_available = available[-1].stem.split('_')[1]
 
+        cptr = 0
         for cptr, digit in enumerate(last_nbr_available):
             if digit != '0':
                 break
@@ -56,7 +64,7 @@ def get_last_saved(save_path: str) -> int:
     return 0
 
 
-def dl_and_save_img(link: str, save_path: str) -> bool:
+def dl_and_save_img(link: str, save_path: pathlib.Path) -> bool:
     """Function that fetch an image from a provided link and saves it.
 
     Args:
@@ -76,16 +84,15 @@ def dl_and_save_img(link: str, save_path: str) -> bool:
         return False
 
     if resource.ok:
-        print(f"{curr_func} -- Saving: {os.path.basename(save_path)}\n")
+        print(f"{curr_func} -- Saving: {save_path.name}\n")
 
         with open(save_path, "wb") as img:
             for chunk in resource.iter_content(1024):
                 img.write(chunk)
         return True
 
-    else:
-        print(f"{curr_func} -- Image not found")
-        return False
+    print(f"{curr_func} -- Image not found")
+    return False
 
 
 def main() -> None:
@@ -98,7 +105,7 @@ def main() -> None:
     """
     curr_func = inspect.currentframe().f_code.co_name
 
-    last_nbr_available = get_last_saved(folder_save_dl + BD_name + "/")
+    last_nbr_available = get_last_saved(FOLDER_SAVE_DL_BD_NAME)
     print(f"{curr_func} -- Last downloaded: {last_nbr_available}")
 
     cptr = last_nbr_available + 1
@@ -114,15 +121,15 @@ def main() -> None:
             i = i + 1
 
         pic_nbr = pic_nbr + str(cptr)
-        image_name = BD_name + "_" + pic_nbr + "_" + ends + ext
-        image_name_b = BD_name + "_" + pic_nbr + "_" + ends + "_" + extra + ext
+        image_name = BD_NAME + "_" + pic_nbr + "_" + ENDS + EXT
+        image_name_b = BD_NAME + "_" + pic_nbr + "_" + ENDS + "_" + EXTRA + EXT
 
         print(f"{curr_func} -- Downloading: {image_name}")
-        ret = dl_and_save_img(root_site + image_name, folder_save_dl + BD_name + "/" + image_name)
+        ret = dl_and_save_img(ROOT_SITE + image_name, FOLDER_SAVE_DL_BD_NAME/image_name)
 
         if not ret:
             print(f"{curr_func} -- Failed with {image_name} Retrying with {image_name_b}")
-            ret_b = dl_and_save_img(root_site + image_name_b, folder_save_dl + BD_name + "/" + image_name)
+            ret_b = dl_and_save_img(ROOT_SITE + image_name_b, FOLDER_SAVE_DL_BD_NAME/image_name)
 
             if not ret_b:
                 print((f"{curr_func} -- Nothing to download. Process aborting..."))
