@@ -68,7 +68,13 @@ def dl_and_save_img(link: str, save_path: str) -> bool:
     """
     curr_func = inspect.currentframe().f_code.co_name
 
-    resource = requests.get(link, stream=True)
+    try:
+        resource = requests.get(link, stream=True, timeout=5)
+
+    except Exception as error:
+        print(f"Distant ressource {link} unreachable: {repr(error)}")
+        return False
+
     if resource.ok:
         print(f"{curr_func} -- Saving: {os.path.basename(save_path)}\n")
 
