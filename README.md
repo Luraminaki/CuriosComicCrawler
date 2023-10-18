@@ -7,7 +7,7 @@
 - Python3 (`apt install python3-dev` & `apt install python3-setuptools` & `apt instal python3-pip`)
 - Numpy (`apt install python3-numpy`)
 - OpenCV (⩾4.5) (`pip3 install opencv-contrib-python`)
-- Model links [EDSR_Tensorflow](https://github.com/Saafke/EDSR_Tensorflow/tree/master/models), [TF-ESPCN](https://github.com/fannymonori/TF-ESPCN/tree/master/export), [FSRCNN_Tensorflow](https://github.com/Saafke/FSRCNN_Tensorflow/tree/master/models), [TF-LapSRN]((https://github.com/fannymonori/TF-LapSRN/tree/master/export)
+- Model links [EDSR_Tensorflow](https://github.com/Saafke/EDSR_Tensorflow/tree/master/models), [TF-ESPCN](https://github.com/fannymonori/TF-ESPCN/tree/master/export), [FSRCNN_Tensorflow](https://github.com/Saafke/FSRCNN_Tensorflow/tree/master/models), [TF-LapSRN](https://github.com/fannymonori/TF-LapSRN/tree/master/export)
 
 ## Overview
 
