@@ -7,11 +7,11 @@
 - Python3 (`apt install python3-dev` & `apt install python3-setuptools` & `apt instal python3-pip`)
 - Numpy (`apt install python3-numpy`)
 - OpenCV (⩾4.5) (`pip3 install opencv-contrib-python`)
-- Model links (`https://github.com/Saafke/EDSR_Tensorflow/tree/master/models`, `https://github.com/fannymonori/TF-ESPCN/tree/master/export`, `https://github.com/Saafke/FSRCNN_Tensorflow/tree/master/models`, `https://github.com/fannymonori/TF-LapSRN/tree/master/export`)
+- Model links [EDSR_Tensorflow](https://github.com/Saafke/EDSR_Tensorflow/tree/master/models), [TF-ESPCN](https://github.com/fannymonori/TF-ESPCN/tree/master/export), [FSRCNN_Tensorflow](https://github.com/Saafke/FSRCNN_Tensorflow/tree/master/models), [TF-LapSRN]((https://github.com/fannymonori/TF-LapSRN/tree/master/export)
 
 ## Overview
 
-I love `Sequential Art` from `https://www.collectedcurios.com/`. But I don't always have a stable connection (And it seems the author has some issues with his server every once in a while)... And my sight isn't as good as it used to be... So I made this... Please bear in mind that I made this for entertaining and educative purpose only. Consider supporting (financially) the author of this comic if you like his work.
+I love [Sequential Art](https://www.collectedcurios.com/). But I don't always have a stable connection (And it seems the author has some issues with his server every once in a while)... And my sight isn't as good as it used to be... So I made this... Please bear in mind that I made this for entertaining and educative purpose only. Consider supporting (financially) the author of this comic if you like his work.
 Just edit the `config.json` file if you want to play around with the script...
 
 ## Start Comic Crawler Downloader
