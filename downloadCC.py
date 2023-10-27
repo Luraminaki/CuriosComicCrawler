@@ -24,15 +24,15 @@ CONFIG_FILE = "config.json"
 with open(CWD/CONFIG_FILE, encoding='utf-8') as f:
     conf = json.load(f)
 
-BD_NAME: str = conf["BD_name"]
-EXT: str = conf["ext"]
+BD_NAME: str = str(conf["BD_name"])
+EXT: str = str(conf["ext"])
 
-ROOT_SITE: str = conf["root_site"]
+ROOT_SITE: str = str(conf["root_site"])
 
-ENDS: str = conf["ends"]
-EXTRA: str = conf["extra"]
+ENDS: str = str(conf["ends"])
+EXTRA: str = str(conf["extra"])
 
-FOLDER_SAVE_DL: pathlib.Path = CWD/DATA_FOLDER/conf["folder_save_dl"]
+FOLDER_SAVE_DL: pathlib.Path = CWD/DATA_FOLDER/str(conf["folder_save_dl"])
 
 FOLDER_SAVE_DL_BD_NAME: pathlib.Path = FOLDER_SAVE_DL/BD_NAME
 
@@ -95,13 +95,8 @@ def dl_and_save_img(link: str, save_path: pathlib.Path) -> bool:
     return False
 
 
-def main() -> None:
-    """main function. Simply call it.
-
-    Args:
-
-    Returns:
-        None: None.
+def main() -> int:
+    """main
     """
     curr_func = inspect.currentframe().f_code.co_name
 
@@ -137,6 +132,8 @@ def main() -> None:
 
         time.sleep(1)
         cptr = cptr + 1
+
+    return 0
 
 
 if __name__ == '__main__':
