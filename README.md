@@ -1,6 +1,6 @@
 # CC DL-UPSCALER
 
-I love [Sequential Art](https://www.collectedcurios.com/). But I don't always have a stable connection (And it seems the author has some issues with his server every once in a while)... And my sight isn't as good as it used to be... So I made this... Please bear in mind that I made this for entertaining and educative purpose only. Consider supporting (financially) the author of this comic if you like his work.
+I love [Sequential Art](https://www.collectedcurios.com/). But I don't always have a stable connection (And it seems the author has some issues with his server every once in a while)... And my sight isn't as good as it used to be... So I made this... Please bear in mind that I made this for entertaining and educative purpose only. Consider [supporting](https://www.patreon.com/collectedcurios) the author of this comic if you like his work.
 Just edit the `config.json` file if you want to play around with the scripts...
 
 ## Versions
