@@ -84,7 +84,7 @@ def sharpen_image(image: np.ndarray, ksize_1: int=7, ksize_2: int=7, sigma_1: fl
     Returns:
         np.ndarray: Sharpned image.
     """
-    curr_func = inspect.currentframe().f_code.co_name
+    # curr_func = inspect.currentframe().f_code.co_name
 
     blur1 = cv2.GaussianBlur(image, (ksize_1, ksize_1), sigma_1)
     blur2 = cv2.GaussianBlur(image, (ksize_2, ksize_2), sigma_2)
@@ -168,7 +168,7 @@ def main() -> int:
         minutes = int(total/(60))%60
         seconds = int(total)%60
 
-        print(f"{curr_func} -- Image {img_path.name} upscaled in {toc} second(s). \n\t Estimated remaining time: {days}d - {hours}h:{minutes}m:{seconds}s\n")
+        print(f"{curr_func} -- Image {img_path.name} processed in {toc} second(s). \n\t Estimated remaining time: {days}d - {hours}h:{minutes}m:{seconds}s\n")
 
     return 0
 
