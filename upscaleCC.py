@@ -135,6 +135,7 @@ def main() -> int:
     sup_res.readModel(str(model_path))
     sup_res.setModel(model_name, int(model_scale))
 
+    avg_completion_time = 0
     # Compute / Upscale / Clean each small image
     for cptr, img_path in enumerate(originals[len(completed):]):
         tic = time.time()
@@ -156,8 +157,10 @@ def main() -> int:
         toc = int((tac - tic)*100)
         toc = toc / 100
 
+        avg_completion_time = avg_completion_time + toc
+
         # Estimate remaining time to complete the task
-        total = toc * ((len(originals[len(completed):]) - cptr) - 1)
+        total = (avg_completion_time / (cptr + 1)) * ((len(originals[len(completed):]) - cptr) - 1)
         total = total if total > 0 else 0
 
         days = int(total/(60*60*24))
