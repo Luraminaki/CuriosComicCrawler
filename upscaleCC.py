@@ -15,7 +15,7 @@ import pathlib
 import cv2
 import numpy as np
 #===================================================================================================
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 CWD = pathlib.Path.cwd()
 
@@ -54,22 +54,35 @@ def area_posterise(input_image: np.ndarray, nbr_cluster: int=32, nbr_iterations:
     """
     curr_func = inspect.currentframe().f_code.co_name
 
-    if 1 < nbr_cluster < 255:
-        area_to_posterise_line = input_image.reshape((-1, 3))
-        area_to_posterise_line = np.float32(area_to_posterise_line)
+    if not 1 < nbr_cluster <= 255:
+        print(f"{curr_func} -- Change the value of {nbr_cluster} for 'nbr_cluster' should be (1 ~ 255)")
+        return input_image
 
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-        flags = cv2.KMEANS_RANDOM_CENTERS
-        _, labels, centers = cv2.kmeans(area_to_posterise_line, nbr_cluster, None, criteria, nbr_iterations, flags)
-        centers.astype(np.uint8)
-        res = centers[labels.flatten()]
-        posterised_area_to_posterise = res.reshape((np.shape(input_image)))
+    unique_values = np.unique(input_image)
 
-        return posterised_area_to_posterise
+    if len(unique_values) <= nbr_cluster:
+        print(f"{curr_func} -- WARNING -- Requested clusters {nbr_cluster} can't be highter than the number of unique elements {len(unique_values)} to organise")
+        return input_image
 
-    print(f"{curr_func} -- Change the value of the following parameter 'nbr_cluster' (1 ~ 255)")
+    if len(input_image.shape) > 1:
+        area_to_posterise_line = input_image.reshape((-1, input_image.size))
+    else:
+        area_to_posterise_line = input_image
 
-    return input_image
+    area_to_posterise_line = np.float32(area_to_posterise_line)
+
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+    flags = cv2.KMEANS_RANDOM_CENTERS
+    _, labels, centers = cv2.kmeans(area_to_posterise_line, nbr_cluster, None, criteria, nbr_iterations, flags)
+    centers.astype(np.uint8)
+
+    res: np.ndarray = centers[labels.flatten()]
+
+    if len(input_image.shape) > 1:
+        return res.reshape((np.shape(input_image)))
+
+    return res.reshape((np.shape(-1)))
+
 
 def sharpen_image(image: np.ndarray, ksize_1: int=7, ksize_2: int=7, sigma_1: float=1., sigma_2: float=2.) -> np.ndarray:
     """Function that sharpen an image.
