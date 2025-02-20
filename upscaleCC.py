@@ -7,38 +7,23 @@ Created on Tue Nov 16 18:45:31 2021
 """
 
 #===================================================================================================
+import sys
 import time
 import json
 import inspect
 import pathlib
+import argparse
 
 import cv2
 import numpy as np
+
+#pylint: disable=no-name-in-module
+from __init__ import __version__
+#pylint: enable=no-name-in-module
 #===================================================================================================
-__version__ = "0.1.2"
 
 CWD = pathlib.Path.cwd()
-
-DATA_FOLDER = "data/"
-CONFIG_FILE = "config.json"
-
-with open(CWD/CONFIG_FILE, encoding='utf-8') as f:
-    conf = json.load(f)
-
-BD_NAME: str = str(conf["BD_name"])
-EXT: str = str(conf["ext"])
-
-MODEL: int = abs(int(conf["model_nbr"]))
-FOLDER_MODELS: pathlib.Path = CWD/DATA_FOLDER/str(conf["folder_models"])
-
-FOLDER_SAVE_DL: pathlib.Path = CWD/DATA_FOLDER/str(conf["folder_save_dl"])
-FOLDER_SAVE_UPSCALE: pathlib.Path = CWD/DATA_FOLDER/str(conf["folder_save_upscale"])
-
-FOLDER_SAVE_DL_BD_NAME: pathlib.Path = FOLDER_SAVE_DL/BD_NAME
-FOLDER_SAVE_UPSCALE_BD_NAME: pathlib.Path = FOLDER_SAVE_UPSCALE/BD_NAME
-
-FOLDER_SAVE_DL_BD_NAME.mkdir(exist_ok=True)
-FOLDER_SAVE_UPSCALE_BD_NAME.mkdir(exist_ok=True)
+CONFIG_FILE = CWD/"config.json"
 
 
 def area_posterise(input_image: np.ndarray, nbr_cluster: int=32, nbr_iterations: int=10) -> np.ndarray:
@@ -109,38 +94,49 @@ def sharpen_image(image: np.ndarray, ksize_1: int=7, ksize_2: int=7, sigma_1: fl
     return sharpenned_image
 
 
-def main() -> int:
-    """main
+def main(config: dict) -> int:
+    """Main
+
+    Args:
+        config (dict): Content of the config file
+
+    Returns:
+        int: 0 if success, 1 if failed
     """
     curr_func = inspect.currentframe().f_code.co_name
 
+    selected_model: int = abs(int(conf['model_nbr']))
+    folder_models: pathlib.Path = CWD/f"{config['folder_data']}{config['folder_models']}"
+
+    folder_save_dl_bd_name: pathlib.Path = CWD/f"{config['folder_data']}{config['folder_save_dl']}{config['BD_name']}"
+    folder_save_upscale_bd_name: pathlib.Path = CWD/f"{config['folder_data']}{config['folder_save_upscale']}{config['BD_name']}"
+    folder_save_dl_bd_name.mkdir(exist_ok=True, parents=True)
+    folder_save_upscale_bd_name.mkdir(exist_ok=True, parents=True)
+
     # Get small pictures
-    originals = list(FOLDER_SAVE_DL_BD_NAME.glob("*" + EXT))
-    originals.sort()
+    originals = sorted(folder_save_dl_bd_name.glob(f"*{config['ext']}"))
 
     # Get completed pictures
-    completed = list(FOLDER_SAVE_UPSCALE_BD_NAME.glob("*" + EXT))
+    completed = sorted(folder_save_upscale_bd_name.glob(f"*{config['ext']}"))
 
     # Get trained models
-    models = list(FOLDER_MODELS.glob("*.pb"))
+    models = sorted(folder_models.glob('*.pb'))
 
     if not models:
-        print(f"{curr_func} -- No Model found in the {FOLDER_MODELS} folder...")
+        print(f"{curr_func} -- No Model found in the {folder_models} folder...")
         return 1
 
-    models.sort()
-    selected_model = MODEL
     nbr_models = len(models)
 
-    if not nbr_models >= selected_model:
-        print(f"{curr_func} -- Model n°{selected_model} not found in the {FOLDER_MODELS} folder...")
+    if  selected_model > (nbr_models - 1):
+        print(f"{curr_func} -- Model n°{selected_model} not found in the {folder_models} folder...")
         selected_model = nbr_models - 1
         print(f"{curr_func} -- Found {nbr_models} model(s)... Proceeding with Model n°{selected_model} instead...")
 
     # Select model
     model_path = models[selected_model]
-    model_name = model_path.stem.split("_", maxsplit=1)[0].lower()
-    model_scale = model_path.stem.split("_")[-1].replace("x", "")
+    model_name = model_path.stem.split('_', maxsplit=1)[0].lower()
+    model_scale = model_path.stem.split('_')[-1].replace('x', '')
     print(f"{curr_func} -- Using model {model_name} with {model_scale} scaling...")
 
     # Prepare model
@@ -160,11 +156,11 @@ def main() -> int:
         result = sup_res.upsample(img)
 
         print(f"{curr_func} -- Cleaning image {img_path.name}")
-        img = area_posterise(img)
+        img = area_posterise(img, config['gray_values'])
         img = sharpen_image(img)
 
         print(f"{curr_func} -- Saving image {img_path.name}")
-        cv2.imwrite(str(FOLDER_SAVE_UPSCALE_BD_NAME/img_path.name), result)
+        cv2.imwrite(str(folder_save_upscale_bd_name/img_path.name), result)
 
         tac = time.time()
         toc = int((tac - tic)*100)
@@ -187,4 +183,46 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-    main()
+    c_func = inspect.currentframe().f_code.co_name
+    m_tic = time.perf_counter()
+
+    print(f"{c_func} -- Version {__version__}")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--configuration', help='Configuration file location', required=False)
+    args = vars(parser.parse_args())
+
+    config_file = args.get('configuration', None)
+    if config_file is None:
+        config_file = CONFIG_FILE
+    else:
+        config_file = pathlib.Path(config_file)
+
+    if not config_file.is_file():
+        print(f"{c_func} -- ERROR -- {config_file} does not exist -- Aborting")
+        sys.exit(1)
+
+    try:
+        with config_file.open('r', encoding='utf-8') as f:
+            conf: dict = json.load(f)
+    except Exception as err:
+        print(f"{c_func} -- ERROR -- Loading {config_file} failed -- {repr(err)}")
+        sys.exit(1)
+
+    print(f"{c_func} -- Current time is: {time.asctime(time.localtime())}")
+    print(f"{c_func} -- {config_file} acquired")
+    crash = False
+
+    try:
+        main(config=conf)
+    except Exception as err:
+        crash = True
+        print(f"{c_func} -- ERROR -- App chrashed at {time.asctime(time.localtime())} -- {repr(err)}")
+
+    m_tac = time.perf_counter() - m_tic
+    print(f"{c_func} -- Ellapsed time: {round(m_tac, 3)}")
+
+    if crash:
+        sys.exit(1)
+
+    sys.exit(0)
