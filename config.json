@@ -1,11 +1,21 @@
 {
     "root_site": "https://www.collectedcurios.com/",
     "BD_name": "SA",
+    "padded": 4,
+    "fails": 2,
     "ends": "small",
     "extra": "b",
     "ext": ".jpg",
+    "folder_data": "data/",
     "folder_save_dl": "DL/",
     "folder_save_upscale": "UPSCALE/",
     "folder_models": "models/",
-    "model_nbr": 7
+    "model_nbr": 0,
+    "gray_values": 32,
+    "headers": {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+        "Accept": "*/*",
+        "Accept-Language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
+        "Accept-Encoding": "gzip, deflate, br, zstd"
+    }
 }
