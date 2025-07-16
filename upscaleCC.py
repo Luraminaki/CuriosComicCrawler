@@ -47,21 +47,23 @@ def area_posterise(input_image: np.ndarray, nbr_cluster: int=32, nbr_iterations:
 
     unique_values = np.unique(input_image)
 
-    if len(unique_values) <= nbr_cluster:
+    if unique_values.size <= nbr_cluster:
         print(f"{curr_func} -- WARNING -- Requested clusters {nbr_cluster} can't be highter than the number of unique elements {len(unique_values)} to organise")
         return input_image
 
     if len(input_image.shape) > 1:
         area_to_posterise_line = input_image.reshape((-1, input_image.size))
     else:
-        area_to_posterise_line = input_image
+        area_to_posterise_line = input_image.copy()
 
-    area_to_posterise_line = np.float32(area_to_posterise_line)
+    area_to_posterise_line = area_to_posterise_line.astype(np.float32)
 
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
     flags = cv2.KMEANS_RANDOM_CENTERS
-    _, labels, centers = cv2.kmeans(area_to_posterise_line, nbr_cluster, None, criteria, nbr_iterations, flags)
-    centers.astype(np.uint8)
+    _, labels, centers = cv2.kmeans(area_to_posterise_line, nbr_cluster,
+                                    np.zeros_like((area_to_posterise_line.size,), dtype=np.int32),
+                                    criteria, nbr_iterations, flags)
+    centers = centers.astype(np.uint8)
 
     res: np.ndarray = centers[labels.flatten()]
 
