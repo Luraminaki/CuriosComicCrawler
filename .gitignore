@@ -70,3 +70,6 @@ credentials.json
 # Output and input Datas
 *.jpg
 *.pb
+
+# Logs
+*.log

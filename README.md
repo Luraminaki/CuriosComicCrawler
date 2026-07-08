@@ -5,6 +5,8 @@ Just edit the `config.json` file if you want to play around with the scripts...
 
 ## Versions
 
+- 0.3.0: Package refresh -- pydantic config, installable via `pyproject.toml`, automatic model download (with sha256 integrity checks), menu-driven launcher, parallel upscaling, test suite, bug fixes
+- 0.2.0: Bug fixes
 - 0.1.0-alpha: First release
 
 ## Table of content
@@ -14,57 +16,93 @@ Just edit the `config.json` file if you want to play around with the scripts...
 - [CC DL-UPSCALER](#cc-dl-upscaler)
   - [Versions](#versions)
   - [Table of content](#table-of-content)
-  - [Requirements](#requirements)
   - [Install](#install)
-    - [About The Models](#about-the-models)
-  - [Start Comic Crawler Downloader](#start-comic-crawler-downloader)
-  - [Start Comic Crawled Upscaler](#start-comic-crawled-upscaler)
+  - [Configuration](#configuration)
+    - [About the models](#about-the-models)
+  - [Usage](#usage)
+    - [Launcher (menu-driven)](#launcher-menu-driven)
+    - [Download comic pages](#download-comic-pages)
+    - [Upscale downloaded pages](#upscale-downloaded-pages)
+  - [Development](#development)
 
 <!-- /TOC -->
 
-## Requirements
-
-- Model links [EDSR_Tensorflow](https://github.com/Saafke/EDSR_Tensorflow/tree/master/models), [TF-ESPCN](https://github.com/fannymonori/TF-ESPCN/tree/master/export), [FSRCNN_Tensorflow](https://github.com/Saafke/FSRCNN_Tensorflow/tree/master/models), [TF-LapSRN](https://github.com/fannymonori/TF-LapSRN/tree/master/export)
-
 ## Install
 
-For `Python 3` installation, consult the following [link](https://www.python.org/downloads/)
+See [INSTALL.md](INSTALL.md) for step-by-step instructions (Windows, Debian/Ubuntu, Arch).
 
-Once done, open a new terminal in the directory `CuriosComicCrawler` and type the following command to create the python virtual environment.
+## Configuration
+
+Both tools read `config.json` (or a file passed via `-c/--configuration`), validated
+against a pydantic model -- an invalid or missing field is reported clearly instead of
+failing deep inside the code.
+
+| Field                 | Meaning                                                                 |
+|-----------------------|--------------------------------------------------------------------------|
+| `root_site`           | Base URL comic pages are downloaded from                                 |
+| `BD_name`             | Comic identifier, used as filename prefix and subfolder name             |
+| `padded`              | Zero-padding width of the page number in filenames                       |
+| `fails`               | Number of *consecutive* failed download attempts that ends a run (a fully-missing page costs 2 -- one per filename variant tried) |
+| `ends` / `extra`      | Filename suffix variants the site uses (`..._small.jpg`, `..._small_b.jpg`) |
+| `ext`                 | Image extension, including the leading dot                               |
+| `folder_data`         | Root data folder                                                         |
+| `folder_save_dl`      | Subfolder downloaded pages are saved to                                  |
+| `folder_save_upscale` | Subfolder upscaled pages are saved to                                    |
+| `folder_models`       | Subfolder super-resolution models are stored in                          |
+| `model_name`          | Super-resolution model family: `edsr`, `espcn`, `fsrcnn`, `fsrcnn-small`, or `lapsrn` |
+| `model_scale`         | Upscaling factor for `model_name` (2/3/4, or 2/4/8 for `lapsrn`)          |
+| `gray_values`         | Number of posterisation clusters applied to the upscaled image           |
+| `headers`             | HTTP headers sent with every download request                           |
+| `upscale_workers`     | *(optional)* Number of pages to upscale in parallel (one worker process per page in flight). Omit or set to `null` to use one worker per CPU core. |
+
+### About the models
+
+Model weights come from [EDSR_Tensorflow](https://github.com/Saafke/EDSR_Tensorflow), [TF-ESPCN](https://github.com/fannymonori/TF-ESPCN), [FSRCNN_Tensorflow](https://github.com/Saafke/FSRCNN_Tensorflow), and [TF-LapSRN](https://github.com/fannymonori/TF-LapSRN). You no longer need to download these by hand: the upscaler fetches whichever `model_name`/`model_scale` combination `config.json` asks for into `data/models/` the first time it's needed, and reuses it on later runs.
+
+Every model file's sha256 is pinned in `model_registry.py` and checked both right after downloading and before reusing an already-cached file, so a truncated download or a `.pb` corrupted on disk gets re-fetched automatically instead of silently being fed to OpenCV.
+
+Upscaling itself runs across multiple worker processes (see `upscale_workers` above) -- each page is independent, so this uses all CPU cores by default instead of processing pages one at a time.
+
+## Usage
+
+### Launcher (menu-driven)
 
 ```sh
-python -m venv .venv
+comiccrawler --configuration=config.json
 ```
 
-In the same terminal, activate the `.venv` previously created as follow, or as shown in [HowTo](https://docs.python.org/3/tutorial/venv.html#creating-virtual-environments), and install the project's dependencies.
+Asks what to do (download, upscale, or both) and, for whichever step you pick, whether to
+force-reprocess everything -- re-download every page from scratch, and/or re-upscale every
+downloaded page, ignoring what's already there.
 
-- **Windows**
+It also runs non-interactively, e.g. for a cron job that redoes everything from scratch:
 
 ```sh
-.venv\Scripts\activate
-pip install -U -r requirements.txt
+comiccrawler -c config.json --mode both --force-download --force-upscale
 ```
 
-- **Unix** or **MacOS**
+`--mode` accepts `download`, `upscale`, or `both`; passing it skips the interactive menu
+entirely (and the `--force-*` flags default to off unless given).
+
+### Download comic pages
 
 ```sh
-source .venv/bin/activate
-pip install -U -r requirements.txt
+comiccrawler-download --configuration=config.json
 ```
 
-### About The Models
-
-As you saw in the [Requirements](#requirements) section, I'm using pre-trained models. Be sure to put these in the `data/models/` folder.
-
-
-## Start Comic Crawler Downloader
+### Upscale downloaded pages
 
 ```sh
- python3 downloadCC.py
+comiccrawler-upscale --configuration=config.json
 ```
 
-## Start Comic Crawled Upscaler
+All three also work as `python -m curios_comic_crawler.cli_launcher` / `cli_download` / `cli_upscale` if you'd rather not rely on the installed console scripts, and all default to `./config.json` when `--configuration` is omitted.
+
+## Development
 
 ```sh
- python3 upscaleCC.py
+pip install -U -e ".[dev]"
+ruff check src/ tests/
+basedpyright src/
+pytest
 ```

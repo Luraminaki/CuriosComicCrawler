@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "curios-comic-crawler"
+version = "0.3.0"
+description = "Download Sequential Art comic pages and locally upscale them with OpenCV super-resolution models."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Luraminaki" }]
+dependencies = [
+    "numpy>=1.26",
+    "opencv-contrib-python>=4.9",
+    "requests>=2.31",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6", "basedpyright>=1.18", "pytest>=8.0"]
+
+[project.scripts]
+comiccrawler = "curios_comic_crawler.cli_launcher:cli"
+comiccrawler-download = "curios_comic_crawler.cli_download:cli"
+comiccrawler-upscale = "curios_comic_crawler.cli_upscale:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/curios_comic_crawler"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "PL", "N", "SIM", "RUF", "D"]
+ignore = [
+    "D203", # incompatible with D211 (no-blank-line-before-class)
+    "D213", # incompatible with D212 (multi-line-summary-first-line)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.basedpyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "PLR2004"]

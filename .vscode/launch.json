@@ -6,38 +6,40 @@
     "configurations": [
         {
             "name": "Python: Current File",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
         },
         {
-            "name": "DCC",
-            "type": "python",
+            "name": "CC",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/downloadCC.py",
+            "module": "curios_comic_crawler.cli_launcher",
             "args": ["--configuration=${workspaceFolder}/config.json"],
+            "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
-            "justMyCode": false,
-            "debugOptions": [
-                "WaitOnAbnormalExit",
-                "WaitOnNormalExit",
-                //"Sudo"
-            ]
+            "justMyCode": false
+        },
+        {
+            "name": "DCC",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "curios_comic_crawler.cli_download",
+            "args": ["--configuration=${workspaceFolder}/config.json"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false
         },
         {
             "name": "UCC",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/upscaleCC.py",
+            "module": "curios_comic_crawler.cli_upscale",
             "args": ["--configuration=${workspaceFolder}/config.json"],
+            "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
-            "justMyCode": false,
-            "debugOptions": [
-                "WaitOnAbnormalExit",
-                "WaitOnNormalExit",
-                //"Sudo"
-            ]
+            "justMyCode": false
         }
     ],
     "compounds": [
