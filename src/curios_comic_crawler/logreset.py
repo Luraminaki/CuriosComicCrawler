@@ -20,8 +20,10 @@ def reset_logging(conf: dict | None = None) -> None:
             that stdlib API). Defaults to None.
     """
     root = logging.getLogger()
-    _ = list(map(root.removeHandler, root.handlers[:]))
-    _ = list(map(root.removeFilter, root.filters[:]))
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+    for log_filter in root.filters[:]:
+        root.removeFilter(log_filter)
 
     if conf is not None:
         logging.config.dictConfig(conf)

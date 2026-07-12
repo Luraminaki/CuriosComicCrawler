@@ -7,10 +7,16 @@ Replaces raw `dict` access into a parsed `config.json` with a validated pydantic
 import json
 import pathlib
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .model_registry import MODEL_MANIFEST
 from .models import ModelName
+
+_WINDOWS_RESERVED_NAMES = frozenset({
+    'CON', 'PRN', 'AUX', 'NUL',
+    *(f'COM{i}' for i in range(1, 10)),
+    *(f'LPT{i}' for i in range(1, 10)),
+})
 
 
 class AppConfig(BaseModel):
@@ -22,14 +28,17 @@ class AppConfig(BaseModel):
             concatenation (`root_site + image_name`); `HttpUrl` normalizes URLs in ways that
             would silently change that concatenation.
         bd_name: Comic identifier, also used as the image filename prefix and the
-            download/upscale subfolder name.
+            download/upscale subfolder name. Must be a single path segment (no path
+            separators, and not a Windows-reserved device name) since it is joined directly
+            into paths.
         padded: Zero-padding width of the page number in image filenames.
         fails: Number of consecutive failed download attempts that ends a run. Each filename
             variant tried for a page counts as one attempt, so a fully-missing page costs as
-            many fails as there are variants (currently 2); any successful download resets the
-            count to 0.
-        ends: Suffix inserted before the extension in the "small" filename variant.
-        extra: Suffix inserted before the extension in the alternate filename variant.
+            many fails as there are variants in `filename_variants`; any successful download
+            resets the count to 0.
+        filename_variants: Ordered list of filename suffixes tried for each page (e.g.
+            `["small", "small_b"]` tries `..._small.jpg` then `..._small_b.jpg`). At least one
+            entry is required.
         ext: Image file extension, including the leading dot (e.g. `".jpg"`).
         folder_data: Root data folder, relative to the current working directory.
         folder_save_dl: Subfolder (under `folder_data`) downloaded pages are saved to.
@@ -48,8 +57,7 @@ class AppConfig(BaseModel):
     bd_name: str = Field(alias='BD_name')
     padded: int = Field(gt=0)
     fails: int = Field(gt=0)
-    ends: str
-    extra: str
+    filename_variants: list[str] = Field(min_length=1)
     ext: str
     folder_data: str
     folder_save_dl: str
@@ -62,6 +70,15 @@ class AppConfig(BaseModel):
     upscale_workers: int | None = Field(default=None, ge=1)
 
     model_config = {'populate_by_name': True}
+
+    @field_validator('bd_name')
+    @classmethod
+    def _check_bd_name(cls, value: str) -> str:
+        if not value or value in ('.', '..') or any(sep in value for sep in ('/', '\\')):
+            raise ValueError(f'BD_name must be a single path segment, not {value!r}')
+        if value.upper() in _WINDOWS_RESERVED_NAMES:
+            raise ValueError(f'BD_name {value!r} is a reserved Windows device name')
+        return value
 
     @model_validator(mode='after')
     def _check_root_site(self) -> 'AppConfig':
@@ -81,20 +98,23 @@ class AppConfig(BaseModel):
             )
         return self
 
+    def _under_data(self, *parts: str) -> pathlib.Path:
+        return pathlib.Path(self.folder_data).joinpath(*parts)
+
     @property
     def dl_dir(self) -> pathlib.Path:
         """Directory downloaded pages for `bd_name` are saved to."""
-        return pathlib.Path(self.folder_data) / self.folder_save_dl / self.bd_name
+        return self._under_data(self.folder_save_dl, self.bd_name)
 
     @property
     def upscale_dir(self) -> pathlib.Path:
         """Directory upscaled pages for `bd_name` are saved to."""
-        return pathlib.Path(self.folder_data) / self.folder_save_upscale / self.bd_name
+        return self._under_data(self.folder_save_upscale, self.bd_name)
 
     @property
     def models_dir(self) -> pathlib.Path:
         """Directory super-resolution models are stored in."""
-        return pathlib.Path(self.folder_data) / self.folder_models
+        return self._under_data(self.folder_models)
 
 
 def load_config(path: 'str | pathlib.Path') -> AppConfig:

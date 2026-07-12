@@ -47,8 +47,7 @@ def _prune_old_runs(log_dir: pathlib.Path, log_file_stem: str, max_runs: int) ->
             path.unlink(missing_ok=True)
 
 
-def configure_launcher_logging(  # noqa: PLR0913
-    logger: logging.Logger,
+def configure_launcher_logging(
     log_file_stem: str,
     log_dir: pathlib.Path | None = None,
     max_bytes: int = _DEFAULT_MAX_BYTES,
@@ -65,7 +64,6 @@ def configure_launcher_logging(  # noqa: PLR0913
     files (`<log_file_stem>-<pid>.log.1`, `.2`, ...) before the oldest is discarded.
 
     Args:
-        logger (logging.Logger): The logger instance to configure.
         log_file_stem (str): The stem for the log file name.
         log_dir (pathlib.Path | None, optional): Directory the log file is written to. Defaults
             to the current working directory at call time.
@@ -77,17 +75,17 @@ def configure_launcher_logging(  # noqa: PLR0913
     """
     logreset.reset_logging()
 
-    level = logging.INFO
     log_dir = (log_dir or pathlib.Path.cwd())
     log_dir.mkdir(parents=True, exist_ok=True)
     _prune_old_runs(log_dir, log_file_stem, max_runs)
     log_file = log_dir / f'{log_file_stem}-{os.getpid()}.log'
+    # `level` also applies to the root logger even though `handlers` is given (see the
+    # `logging.basicConfig` docs), so no separate `logging.getLogger().setLevel(...)` is needed.
     logging.basicConfig(
-        level=level,
+        level=logging.INFO,
         format='[%(asctime)s] [%(process)s] [%(name)s] [%(levelname)s]: %(funcName)s -- %(message)s',
         handlers=[
             RotatingFileHandler(log_file, mode='a', maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8'),
             logging.StreamHandler(),
         ],
     )
-    logger.setLevel(level)

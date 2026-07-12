@@ -35,12 +35,12 @@ def main(
     # Parsed before logging is configured, so `--help`/bad arguments exit cleanly without
     # creating a log file.
     parser = argparse.ArgumentParser(prog=script_name)
-    parser.add_argument('-c', '--configuration', help='Configuration file location', required=False)
+    parser.add_argument('-c', '--configuration', help='Configuration file location')
     if configure_parser is not None:
         configure_parser(parser)
     args = parser.parse_args()
 
-    configure_launcher_logging(logging.getLogger(), script_name)
+    configure_launcher_logging(script_name)
     logger.info('Version %s', __version__)
 
     config_file = pathlib.Path(args.configuration) if args.configuration else pathlib.Path.cwd() / 'config.json'

@@ -12,12 +12,12 @@ import pathlib
 
 import requests
 
+from ._http import CHUNK_SIZE_BYTES, stream_to_file
 from .models import ModelName, ModelSpec
 
 logger = logging.getLogger(__name__)
 
 _REQUEST_TIMEOUT_SECONDS = 30
-_CHUNK_SIZE_BYTES = 256 * 1024
 
 _EDSR_BASE = 'https://raw.githubusercontent.com/Saafke/EDSR_Tensorflow/master/models'
 _ESPCN_BASE = 'https://raw.githubusercontent.com/fannymonori/TF-ESPCN/master/export'
@@ -102,7 +102,7 @@ MODEL_MANIFEST: dict[tuple[ModelName, int], ModelSpec] = {
 def _sha256_of(path: pathlib.Path) -> str:
     digest = hashlib.sha256()
     with path.open('rb') as model_file:
-        for chunk in iter(lambda: model_file.read(_CHUNK_SIZE_BYTES), b''):
+        for chunk in iter(lambda: model_file.read(CHUNK_SIZE_BYTES), b''):
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -143,9 +143,7 @@ def ensure_model(models_dir: pathlib.Path, model_name: ModelName, model_scale: i
     partial_path = target_path.with_suffix(f'{target_path.suffix}.part')
     with requests.get(spec.url, stream=True, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
         response.raise_for_status()
-        with partial_path.open('wb') as model_file:
-            for chunk in response.iter_content(_CHUNK_SIZE_BYTES):
-                model_file.write(chunk)
+        stream_to_file(response, partial_path, CHUNK_SIZE_BYTES)
 
     digest = _sha256_of(partial_path)
     if digest != spec.sha256:
