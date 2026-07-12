@@ -7,6 +7,8 @@ pure orchestration logic around it.
 
 import pathlib
 
+import pytest
+
 from curios_comic_crawler import upscaler
 
 
@@ -22,6 +24,33 @@ def test_select_remaining_with_force_reprocesses_everything() -> None:
     completed = originals[:3]
 
     assert upscaler._select_remaining(originals, completed, force=True) == originals
+
+
+def test_select_remaining_handles_a_gap_in_completed() -> None:
+    # Page 2 is missing from `completed` (e.g. it failed or finished out of submission order),
+    # even though later pages 3 and 4 are already done -- a positional slice would miss this.
+    originals = [pathlib.Path(f'p{i}.jpg') for i in range(5)]
+    completed = [originals[0], originals[1], originals[3], originals[4]]
+
+    assert upscaler._select_remaining(originals, completed, force=False) == [originals[2]]
+
+
+def test_resolve_worker_count_caps_at_cpu_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(upscaler.os, 'cpu_count', lambda: 4)
+
+    assert upscaler._resolve_worker_count(500, remaining_count=500) == 4
+
+
+def test_resolve_worker_count_caps_at_remaining_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(upscaler.os, 'cpu_count', lambda: 8)
+
+    assert upscaler._resolve_worker_count(8, remaining_count=3) == 3
+
+
+def test_resolve_worker_count_defaults_to_cpu_count_when_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(upscaler.os, 'cpu_count', lambda: 6)
+
+    assert upscaler._resolve_worker_count(None, remaining_count=100) == 6
 
 
 def test_format_duration_formats_days_hours_minutes_seconds() -> None:

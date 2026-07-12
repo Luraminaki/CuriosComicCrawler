@@ -74,6 +74,12 @@ def area_posterise(data: np.ndarray, nbr_cluster: int = 2, nbr_iterations: int =
     return np.take(centers, labels_flat, axis=0).reshape(data.shape)
 
 
+def _unsharp_pass(image: np.ndarray, ksize: int, sigma: float) -> np.ndarray:
+    """Run one unsharp-mask pass: blur, then push the original away from the blur."""
+    blur = cv2.GaussianBlur(image, (ksize, ksize), sigma)
+    return cv2.addWeighted(image, 1.5, blur, -0.5, 0)
+
+
 def sharpen_image(
     image: np.ndarray, ksize_1: int = 7, ksize_2: int = 7, sigma_1: float = 1., sigma_2: float = 2.,
 ) -> np.ndarray:
@@ -89,11 +95,7 @@ def sharpen_image(
     Returns:
         np.ndarray: Sharpened image.
     """
-    blur1 = cv2.GaussianBlur(image, (ksize_1, ksize_1), sigma_1)
-    blur2 = cv2.GaussianBlur(image, (ksize_2, ksize_2), sigma_2)
+    temp_1 = _unsharp_pass(image, ksize_1, sigma_1)
+    temp_2 = _unsharp_pass(image, ksize_2, sigma_2)
 
-    temp_1 = cv2.addWeighted(image, 1.5, blur1, -0.5, 0)
-    temp_2 = cv2.addWeighted(image, 1.5, blur2, -0.5, 0)
-    sharpened_image = cv2.addWeighted(temp_1, 0.5, temp_2, 0.5, 0)
-
-    return sharpened_image
+    return cv2.addWeighted(temp_1, 0.5, temp_2, 0.5, 0)

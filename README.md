@@ -40,8 +40,8 @@ failing deep inside the code.
 | `root_site`           | Base URL comic pages are downloaded from                                 |
 | `BD_name`             | Comic identifier, used as filename prefix and subfolder name             |
 | `padded`              | Zero-padding width of the page number in filenames                       |
-| `fails`               | Number of *consecutive* failed download attempts that ends a run (a fully-missing page costs 2 -- one per filename variant tried) |
-| `ends` / `extra`      | Filename suffix variants the site uses (`..._small.jpg`, `..._small_b.jpg`) |
+| `fails`               | Number of *consecutive* failed download attempts that ends a run (a fully-missing page costs one attempt per entry in `filename_variants`) |
+| `filename_variants`   | Ordered list of filename suffixes tried for each page, e.g. `["small", "small_b"]` tries `..._small.jpg` then `..._small_b.jpg` |
 | `ext`                 | Image extension, including the leading dot                               |
 | `folder_data`         | Root data folder                                                         |
 | `folder_save_dl`      | Subfolder downloaded pages are saved to                                  |
@@ -88,11 +88,15 @@ entirely (and the `--force-*` flags default to off unless given).
 comiccrawler-download --configuration=config.json
 ```
 
+Pass `--force` to ignore what's already downloaded and start over from page 1.
+
 ### Upscale downloaded pages
 
 ```sh
 comiccrawler-upscale --configuration=config.json
 ```
+
+Pass `--force` to re-upscale every downloaded page, ignoring what's already upscaled.
 
 All three also work as `python -m curios_comic_crawler.cli_launcher` / `cli_download` / `cli_upscale` if you'd rather not rely on the installed console scripts, and all default to `./config.json` when `--configuration` is omitted.
 

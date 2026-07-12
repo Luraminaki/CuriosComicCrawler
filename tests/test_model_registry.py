@@ -3,11 +3,12 @@
 import hashlib
 import pathlib
 import re
+from typing import get_args
 
 import pytest
 
 from curios_comic_crawler import model_registry
-from curios_comic_crawler.models import ModelSpec
+from curios_comic_crawler.models import ModelName, ModelSpec
 
 
 class _FakeStreamResponse:
@@ -31,6 +32,11 @@ def test_manifest_keys_match_spec_fields() -> None:
     for (name, scale), spec in model_registry.MODEL_MANIFEST.items():
         assert spec.name == name
         assert spec.scale == scale
+
+
+def test_every_model_name_has_at_least_one_manifest_entry() -> None:
+    manifest_names = {name for name, _scale in model_registry.MODEL_MANIFEST}
+    assert manifest_names == set(get_args(ModelName))
 
 
 def test_manifest_filenames_are_unique() -> None:

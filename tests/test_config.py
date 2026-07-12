@@ -31,6 +31,21 @@ def test_root_site_must_be_http_with_trailing_slash(valid_config_dict: dict, bad
         AppConfig.model_validate(valid_config_dict)
 
 
+@pytest.mark.parametrize('bad_bd_name', ['sub/dir', 'sub\\dir', '..', '', 'CON', 'com1', 'lpt9'])
+def test_bd_name_rejects_path_segments_and_reserved_names(valid_config_dict: dict, bad_bd_name: str) -> None:
+    valid_config_dict['BD_name'] = bad_bd_name
+
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(valid_config_dict)
+
+
+def test_filename_variants_requires_at_least_one_entry(valid_config_dict: dict) -> None:
+    valid_config_dict['filename_variants'] = []
+
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(valid_config_dict)
+
+
 def test_unknown_model_scale_combo_is_rejected(valid_config_dict: dict) -> None:
     valid_config_dict['model_name'] = 'lapsrn'
     valid_config_dict['model_scale'] = 3  # lapsrn only ships 2/4/8
