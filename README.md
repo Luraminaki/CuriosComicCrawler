@@ -3,18 +3,16 @@
 I love [Sequential Art](https://www.collectedcurios.com/). But I don't always have a stable connection (And it seems the author has some issues with his server every once in a while)... And my sight isn't as good as it used to be... So I made this... Please bear in mind that I made this for entertaining and educative purpose only. Consider [supporting](https://www.patreon.com/collectedcurios) the author of this comic if you like his work.
 Just edit the `config.json` file if you want to play around with the scripts...
 
-## Versions
+## Version
 
-- 0.3.0: Package refresh -- pydantic config, installable via `pyproject.toml`, automatic model download (with sha256 integrity checks), menu-driven launcher, parallel upscaling, test suite, bug fixes
-- 0.2.0: Bug fixes
-- 0.1.0-alpha: First release
+The current version lives in [pyproject.toml](pyproject.toml). See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ## Table of content
 
 <!-- TOC -->
 
 - [CC DL-UPSCALER](#cc-dl-upscaler)
-  - [Versions](#versions)
+  - [Version](#version)
   - [Table of content](#table-of-content)
   - [Install](#install)
   - [Configuration](#configuration)
