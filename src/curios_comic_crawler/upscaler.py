@@ -20,20 +20,25 @@ logger = logging.getLogger(__name__)
 _worker_sup_res = None
 
 
-def _init_worker(model_path: pathlib.Path, algorithm: str, scale: int) -> None:
+def _init_worker(model_path: pathlib.Path, algorithm: str, scale: int, worker_count: int) -> None:
     """Load the super-resolution model once per worker process.
 
     Args:
         model_path (pathlib.Path): Local path to the model weight file.
         algorithm (str): Name passed to `DnnSuperResImpl.setModel`, e.g. `"edsr"`.
         scale (int): Upscaling factor the model was trained for.
+        worker_count (int): Number of worker processes running concurrently, used to split the
+            available CPU threads between them.
     """
     global _worker_sup_res  # noqa: PLW0603
 
-    # Parallelism now comes from running multiple worker *processes*; without this, each
-    # process would also spin up its own internal OpenCV thread pool on top of that,
-    # oversubscribing the CPU.
-    cv2.setNumThreads(1)
+    # Parallelism comes from running multiple worker *processes*; on top of that, each process
+    # would also spin up its own internal OpenCV thread pool, oversubscribing the CPU if left
+    # uncapped. Split the machine's threads evenly between worker processes instead of always
+    # pinning each one to a single thread -- with a single worker, that used to leave every
+    # other core idle during the (CPU-heavy) model upsample step.
+    cpu_count = os.cpu_count() or 1
+    cv2.setNumThreads(max(1, cpu_count // worker_count))
 
     # cv2's type stubs don't cover the dnn_superres contrib module.
     sup_res = cv2.dnn_superres.DnnSuperResImpl_create()  # pyright: ignore[reportAttributeAccessIssue]
@@ -202,7 +207,7 @@ def run(config: AppConfig, *, force: bool = False) -> int:
     with ProcessPoolExecutor(
         max_workers=worker_count,
         initializer=_init_worker,
-        initargs=(model_path, model_spec.algorithm, model_spec.scale),
+        initargs=(model_path, model_spec.algorithm, model_spec.scale, worker_count),
     ) as executor:
         futures = [
             executor.submit(_process_one, img_path, config.upscale_dir, config.gray_values)
