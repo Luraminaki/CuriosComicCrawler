@@ -51,13 +51,24 @@ def test_engine_runs_on_cpu_only(fake_realesrgan_ncnn_py: None) -> None:
     assert engine._realesrgan.init_kwargs == {'gpuid': -1, 'model': 4}
 
 
-def test_prepare_passes_through_configured_model() -> None:
+def test_prepare_passes_through_configured_model(fake_realesrgan_ncnn_py: None) -> None:
     upscaler_config = NcnnUpscaleConfig(ncnn_model='realesr-animevideov3-x2')
 
     assert sr_engine_ncnn.prepare(upscaler_config) == sr_engine_ncnn.NcnnEngineInit(model='realesr-animevideov3-x2')
 
 
-def test_missing_package_raises_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_package_makes_prepare_fail_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`prepare()` runs in the main process, before any worker is forked -- a missing package
+    must surface here as one clear error, not as a `BrokenProcessPool` per page later on.
+    """
+    monkeypatch.setitem(sys.modules, 'realesrgan_ncnn_py', None)  # simulates "not installed"
+    upscaler_config = NcnnUpscaleConfig(ncnn_model='realesrgan-x4plus-anime')
+
+    with pytest.raises(RuntimeError, match='ncnn'):
+        sr_engine_ncnn.prepare(upscaler_config)
+
+
+def test_missing_package_raises_clear_error_from_build_too(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, 'realesrgan_ncnn_py', None)  # simulates "not installed"
 
     with pytest.raises(RuntimeError, match='ncnn'):

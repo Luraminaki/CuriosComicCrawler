@@ -29,6 +29,22 @@ class NcnnEngineInit(NamedTuple):
     model: NcnnModelName
 
 
+def _import_realesrgan() -> type:
+    """Import and return `realesrgan_ncnn_py.Realesrgan`.
+
+    Raises:
+        RuntimeError: If `realesrgan-ncnn-py` (the `ncnn` extra) isn't installed.
+    """
+    try:
+        from realesrgan_ncnn_py import Realesrgan  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
+    except ImportError as error:
+        raise RuntimeError(
+            'The "ncnn" upscale engine requires the optional realesrgan-ncnn-py package. '
+            'Install it with: pip install curios-comic-crawler[ncnn]',
+        ) from error
+    return Realesrgan
+
+
 class NcnnEngine:
     """Upscales images with `realesrgan_ncnn_py.Realesrgan`."""
 
@@ -41,15 +57,8 @@ class NcnnEngine:
         Raises:
             RuntimeError: If `realesrgan-ncnn-py` (the `ncnn` extra) isn't installed.
         """
-        try:
-            from realesrgan_ncnn_py import Realesrgan  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
-        except ImportError as error:
-            raise RuntimeError(
-                'The "ncnn" upscale engine requires the optional realesrgan-ncnn-py package. '
-                'Install it with: pip install curios-comic-crawler[ncnn]',
-            ) from error
-
-        self._realesrgan = Realesrgan(gpuid=-1, model=_MODEL_INDEX[engine_init.model])
+        realesrgan_cls = _import_realesrgan()
+        self._realesrgan = realesrgan_cls(gpuid=-1, model=_MODEL_INDEX[engine_init.model])
 
     def upscale(self, image: np.ndarray) -> np.ndarray:
         """Upscale `image` with the loaded model."""
@@ -57,14 +66,24 @@ class NcnnEngine:
 
 
 def prepare(upscaler_config: NcnnUpscaleConfig) -> NcnnEngineInit:
-    """Describe the configured model. Nothing to download -- models ship inside the wheel.
+    """Check the engine is usable and describe the configured model.
+
+    Runs in the main process, before any worker is forked, so a missing `realesrgan-ncnn-py`
+    install fails fast with one clear error instead of breaking every worker process's
+    `ProcessPoolExecutor` initializer (which surfaces as an opaque `BrokenProcessPool` for
+    every single page instead of the actual cause). Nothing to download here otherwise --
+    models ship inside the wheel.
 
     Args:
         upscaler_config (NcnnUpscaleConfig): The `engine: "ncnn"` config section.
 
     Returns:
         NcnnEngineInit: Picklable data passed to every worker process's `build()` call.
+
+    Raises:
+        RuntimeError: If `realesrgan-ncnn-py` (the `ncnn` extra) isn't installed.
     """
+    _import_realesrgan()
     return NcnnEngineInit(model=upscaler_config.ncnn_model)
 
 
