@@ -2,8 +2,15 @@
 
 ## Prerequisites
 
-- **Python 3.11+**. Get it from [python.org](https://www.python.org/downloads/) (Windows/macOS)
-  or your distro's package manager (Linux).
+- **Python 3.11 or 3.12** if you intend to use the `ncnn` engine (recommended, see below):
+  `realesrgan-ncnn-py` only publishes prebuilt wheels for Python 3.8-3.12, with no source
+  distribution to build from, so 3.13/3.14 will fail with `No matching distribution found
+  for realesrgan-ncnn-py`. The `opencv` engine alone has no such ceiling; only pick a newer
+  Python if you're sure you'll stick to that engine. Get Python from
+  [python.org](https://www.python.org/downloads/) (Windows/macOS) or your distro's package
+  manager (Linux); on Windows, `py -0` lists every version already installed, and
+  `py -3.12 -m venv .venv` targets one specifically if `python`/`py` defaults to something
+  newer.
 - **A C library OpenCV needs at runtime**: whichever OpenCV wheel you end up with (see
   "Choose an upscaling engine" below) ships pre-built, but on Linux it still dynamically
   loads `libGL.so.1`, which isn't always installed on minimal/headless systems. See the
@@ -44,10 +51,13 @@ The shipped `config.json` defaults to `"ncnn"`.
 ## Windows
 
 ```powershell
-python -m venv .venv
+py -3.12 -m venv .venv
 .venv\Scripts\activate
 pip install -U -e ".[ncnn]"
 ```
+
+`py -3.12` picks Python 3.12 explicitly, regardless of what `python`/`py` alone would default
+to (see the `ncnn` note above) -- swap in `-3.11` if that's what you have installed instead.
 
 ## Linux -- Debian / Ubuntu
 
