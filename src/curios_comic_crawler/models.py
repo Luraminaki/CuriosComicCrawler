@@ -7,6 +7,14 @@ from pydantic import BaseModel
 
 ModelName = Literal['edsr', 'espcn', 'fsrcnn', 'fsrcnn-small', 'lapsrn']
 
+NcnnModelName = Literal[
+    'realesr-animevideov3-x2',
+    'realesr-animevideov3-x3',
+    'realesr-animevideov3-x4',
+    'realesrgan-x4plus-anime',
+    'realesrgan-x4plus',
+]
+
 
 class ModelSpec(BaseModel):
     """A single downloadable OpenCV super-resolution model.

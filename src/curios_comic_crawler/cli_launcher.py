@@ -3,8 +3,8 @@
 
 import sys
 
-from . import launcher
-from ._cli import main
+from curios_comic_crawler import launcher
+from curios_comic_crawler._cli import main
 
 
 def cli() -> None:

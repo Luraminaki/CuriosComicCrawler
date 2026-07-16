@@ -12,8 +12,8 @@ import pathlib
 
 import requests
 
-from ._http import CHUNK_SIZE_BYTES, stream_to_file
-from .models import ModelName, ModelSpec
+from curios_comic_crawler._http import CHUNK_SIZE_BYTES, stream_to_file
+from curios_comic_crawler.models import ModelName, ModelSpec
 
 logger = logging.getLogger(__name__)
 
