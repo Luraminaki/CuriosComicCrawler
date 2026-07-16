@@ -7,13 +7,7 @@ from pydantic import BaseModel
 
 ModelName = Literal['edsr', 'espcn', 'fsrcnn', 'fsrcnn-small', 'lapsrn']
 
-NcnnModelName = Literal[
-    'realesr-animevideov3-x2',
-    'realesr-animevideov3-x3',
-    'realesr-animevideov3-x4',
-    'realesrgan-x4plus-anime',
-    'realesrgan-x4plus',
-]
+OnnxModelName = Literal['realesr-animevideov3-x4', 'realesrgan-x4plus-anime-6b']
 
 
 class ModelSpec(BaseModel):

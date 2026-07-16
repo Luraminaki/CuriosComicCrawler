@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """SREngine implementation backed by OpenCV's `dnn_superres` module."""
 
-import os
 import pathlib
 from typing import NamedTuple
 
@@ -23,20 +22,15 @@ class OpenCVEngineInit(NamedTuple):
 class OpenCVEngine:
     """Upscales images with a `cv2.dnn_superres.DnnSuperResImpl`."""
 
-    def __init__(self, engine_init: OpenCVEngineInit, worker_count: int) -> None:
-        """Load the model described by `engine_init` and configure its thread budget.
+    def __init__(self, engine_init: OpenCVEngineInit) -> None:
+        """Load the model described by `engine_init`.
 
         Args:
             engine_init (OpenCVEngineInit): `prepare()`'s output for this model.
-            worker_count (int): Number of worker processes running concurrently, used to
-                split the available CPU threads between them.
         """
-        # Parallelism comes from running multiple worker *processes*; on top of that, each
-        # process would also spin up its own internal OpenCV thread pool, oversubscribing the
-        # CPU if left uncapped. Split the machine's threads evenly between worker processes
-        # instead of always pinning each one to a single thread.
-        cpu_count = os.cpu_count() or 1
-        cv2.setNumThreads(max(1, cpu_count // worker_count))
+        # cv2's thread pool is capped once per worker process in `upscaler._init_worker`,
+        # covering this model's `upsample()` call as well as the posterise/sharpen steps that
+        # run afterwards regardless of engine -- nothing engine-specific to do here.
 
         # cv2's type stubs don't cover the dnn_superres contrib module.
         sup_res = cv2.dnn_superres.DnnSuperResImpl_create()  # pyright: ignore[reportAttributeAccessIssue]
@@ -66,6 +60,6 @@ def prepare(upscaler_config: OpenCVUpscaleConfig, models_dir: pathlib.Path) -> O
     return OpenCVEngineInit(model_path=model_path, algorithm=spec.algorithm, scale=spec.scale)
 
 
-def build(engine_init: OpenCVEngineInit, worker_count: int) -> OpenCVEngine:
+def build(engine_init: OpenCVEngineInit) -> OpenCVEngine:
     """Build a worker process's `OpenCVEngine` from `prepare()`'s output."""
-    return OpenCVEngine(engine_init, worker_count)
+    return OpenCVEngine(engine_init)

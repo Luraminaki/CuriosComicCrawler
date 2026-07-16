@@ -10,8 +10,8 @@
     "folder_save_upscale": "UPSCALE/",
     "folder_models": "models/",
     "upscaler": {
-        "engine": "ncnn",
-        "ncnn_model": "realesr-animevideov3-x4"
+        "engine": "onnx",
+        "onnx_model": "realesr-animevideov3-x4"
     },
     "gray_values": 32,
     "upscale_workers": 1,

@@ -6,7 +6,7 @@ import pathlib
 import pytest
 from pydantic import ValidationError
 
-from curios_comic_crawler.config import AppConfig, NcnnUpscaleConfig, OpenCVUpscaleConfig, load_config
+from curios_comic_crawler.config import AppConfig, OnnxUpscaleConfig, OpenCVUpscaleConfig, load_config
 
 
 def test_valid_config_validates(valid_config_dict: dict) -> None:
@@ -54,24 +54,26 @@ def test_unknown_model_scale_combo_is_rejected(valid_config_dict: dict) -> None:
         AppConfig.model_validate(valid_config_dict)
 
 
-def test_ncnn_upscaler_config_validates(valid_config_dict: dict) -> None:
-    valid_config_dict['upscaler'] = {'engine': 'ncnn', 'ncnn_model': 'realesrgan-x4plus-anime'}
+def test_onnx_upscaler_config_validates(valid_config_dict: dict) -> None:
+    valid_config_dict['upscaler'] = {'engine': 'onnx', 'onnx_model': 'realesr-animevideov3-x4'}
 
     config = AppConfig.model_validate(valid_config_dict)
 
-    assert isinstance(config.upscaler, NcnnUpscaleConfig)
-    assert config.upscaler.ncnn_model == 'realesrgan-x4plus-anime'
+    assert isinstance(config.upscaler, OnnxUpscaleConfig)
+    assert config.upscaler.onnx_model == 'realesr-animevideov3-x4'
+
+
+def test_onnx_upscaler_config_defaults_model(valid_config_dict: dict) -> None:
+    valid_config_dict['upscaler'] = {'engine': 'onnx'}
+
+    config = AppConfig.model_validate(valid_config_dict)
+
+    assert isinstance(config.upscaler, OnnxUpscaleConfig)
+    assert config.upscaler.onnx_model == 'realesr-animevideov3-x4'
 
 
 def test_unknown_upscaler_engine_is_rejected(valid_config_dict: dict) -> None:
     valid_config_dict['upscaler'] = {'engine': 'pytorch', 'model_name': 'edsr', 'model_scale': 3}
-
-    with pytest.raises(ValidationError):
-        AppConfig.model_validate(valid_config_dict)
-
-
-def test_ncnn_upscaler_config_requires_ncnn_model(valid_config_dict: dict) -> None:
-    valid_config_dict['upscaler'] = {'engine': 'ncnn'}
 
     with pytest.raises(ValidationError):
         AppConfig.model_validate(valid_config_dict)
