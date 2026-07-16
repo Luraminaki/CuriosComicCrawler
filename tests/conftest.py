@@ -21,8 +21,7 @@ def valid_config_dict() -> dict:
         'folder_save_dl': 'DL/',
         'folder_save_upscale': 'UPSCALE/',
         'folder_models': 'models/',
-        'model_name': 'edsr',
-        'model_scale': 3,
+        'upscaler': {'engine': 'opencv', 'model_name': 'edsr', 'model_scale': 3},
         'gray_values': 32,
         'headers': {'User-Agent': 'Mozilla/5.0'},
     }

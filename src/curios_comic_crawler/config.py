@@ -6,17 +6,59 @@ Replaces raw `dict` access into a parsed `config.json` with a validated pydantic
 
 import json
 import pathlib
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .model_registry import MODEL_MANIFEST
-from .models import ModelName
+from curios_comic_crawler.model_registry import MODEL_MANIFEST
+from curios_comic_crawler.models import ModelName, NcnnModelName
 
 _WINDOWS_RESERVED_NAMES = frozenset({
     'CON', 'PRN', 'AUX', 'NUL',
     *(f'COM{i}' for i in range(1, 10)),
     *(f'LPT{i}' for i in range(1, 10)),
 })
+
+
+class OpenCVUpscaleConfig(BaseModel):
+    """Upscale using OpenCV's `dnn_superres` module (see `sr_engine_opencv.py`).
+
+    Attributes:
+        model_name: Super-resolution model family to use.
+        model_scale: Upscaling factor to use for `model_name`.
+    """
+
+    engine: Literal['opencv'] = 'opencv'
+    model_name: ModelName
+    model_scale: int
+
+    @model_validator(mode='after')
+    def _check_model_combo(self) -> 'OpenCVUpscaleConfig':
+        if (self.model_name, self.model_scale) not in MODEL_MANIFEST:
+            known_scales = sorted(scale for name, scale in MODEL_MANIFEST if name == self.model_name)
+            raise ValueError(
+                f'No known model for model_name={self.model_name!r}, model_scale={self.model_scale!r}. '
+                f'Known scales for {self.model_name!r}: {known_scales}'
+            )
+        return self
+
+
+class NcnnUpscaleConfig(BaseModel):
+    """Upscale using `realesrgan-ncnn-py` (see `sr_engine_ncnn.py`).
+
+    Requires the `ncnn` extra (`pip install curios-comic-crawler[ncnn]`); runs on CPU only.
+
+    Attributes:
+        ncnn_model: Which bundled Real-ESRGAN model to use. The `realesr-animevideov3-*`
+            family and `realesrgan-x4plus-anime` are tuned for illustration/anime-style art;
+            `realesrgan-x4plus` is the general-purpose (photo) model.
+    """
+
+    engine: Literal['ncnn'] = 'ncnn'
+    ncnn_model: NcnnModelName
+
+
+UpscaleConfig = Annotated[OpenCVUpscaleConfig | NcnnUpscaleConfig, Field(discriminator='engine')]
 
 
 class AppConfig(BaseModel):
@@ -44,8 +86,8 @@ class AppConfig(BaseModel):
         folder_save_dl: Subfolder (under `folder_data`) downloaded pages are saved to.
         folder_save_upscale: Subfolder (under `folder_data`) upscaled pages are saved to.
         folder_models: Subfolder (under `folder_data`) super-resolution models are stored in.
-        model_name: Super-resolution model family to use.
-        model_scale: Upscaling factor to use for `model_name`.
+        upscaler: Which super-resolution engine/model to upscale with -- either
+            `OpenCVUpscaleConfig` (`engine: "opencv"`) or `NcnnUpscaleConfig` (`engine: "ncnn"`).
         gray_values: Number of posterisation clusters `area_posterise` reduces each image to.
         headers: HTTP headers sent with every download request.
         upscale_workers: Number of pages to upscale in parallel, each in its own process (every
@@ -63,8 +105,7 @@ class AppConfig(BaseModel):
     folder_save_dl: str
     folder_save_upscale: str
     folder_models: str
-    model_name: ModelName
-    model_scale: int
+    upscaler: UpscaleConfig
     gray_values: int = Field(ge=2, le=255)
     headers: dict[str, str]
     upscale_workers: int | None = Field(default=None, ge=1)
@@ -86,16 +127,6 @@ class AppConfig(BaseModel):
             raise ValueError(f'root_site must start with "http": {self.root_site!r}')
         if not self.root_site.endswith('/'):
             raise ValueError(f'root_site must end with "/": {self.root_site!r}')
-        return self
-
-    @model_validator(mode='after')
-    def _check_model_combo(self) -> 'AppConfig':
-        if (self.model_name, self.model_scale) not in MODEL_MANIFEST:
-            known_scales = sorted(scale for name, scale in MODEL_MANIFEST if name == self.model_name)
-            raise ValueError(
-                f'No known model for model_name={self.model_name!r}, model_scale={self.model_scale!r}. '
-                f'Known scales for {self.model_name!r}: {known_scales}'
-            )
         return self
 
     def _under_data(self, *parts: str) -> pathlib.Path:

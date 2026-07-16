@@ -7,7 +7,7 @@ import pathlib
 import re
 from logging.handlers import RotatingFileHandler
 
-from . import logreset
+from curios_comic_crawler import logreset
 
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 _DEFAULT_BACKUP_COUNT = 5

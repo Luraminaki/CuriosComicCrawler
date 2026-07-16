@@ -9,8 +9,8 @@ from re import Pattern
 
 import requests
 
-from ._http import CHUNK_SIZE_BYTES, stream_to_file
-from .config import AppConfig
+from curios_comic_crawler._http import CHUNK_SIZE_BYTES, stream_to_file
+from curios_comic_crawler.config import AppConfig
 
 logger = logging.getLogger(__name__)
 

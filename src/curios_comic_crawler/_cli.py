@@ -7,9 +7,9 @@ import pathlib
 import time
 from collections.abc import Callable
 
-from . import __version__
-from .config import AppConfig, load_config
-from .logging_utils import configure_launcher_logging
+from curios_comic_crawler import __version__
+from curios_comic_crawler.config import AppConfig, load_config
+from curios_comic_crawler.logging_utils import configure_launcher_logging
 
 logger = logging.getLogger(__name__)
 

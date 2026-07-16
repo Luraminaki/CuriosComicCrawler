@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "curios-comic-crawler"
-version = "0.3.0"
+version = "0.4.0"
 description = "Download Sequential Art comic pages and locally upscale them with OpenCV super-resolution models."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,13 +12,17 @@ license = { file = "LICENSE" }
 authors = [{ name = "Luraminaki" }]
 dependencies = [
     "numpy>=1.26",
-    "opencv-contrib-python>=4.9",
     "requests>=2.31",
     "pydantic>=2.7",
 ]
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6", "basedpyright>=1.18", "pytest>=8.0"]
+# Pick one, matching `upscaler.engine` in config.json -- see INSTALL.md for why installing
+# both in the same environment needs an extra step (opencv-python/opencv-contrib-python
+# both ship under the `cv2` package name and conflict with each other).
+opencv = ["opencv-contrib-python>=4.9"]
+ncnn = ["realesrgan-ncnn-py>=2.0"]
 
 [project.scripts]
 comiccrawler = "curios_comic_crawler.cli_launcher:cli"

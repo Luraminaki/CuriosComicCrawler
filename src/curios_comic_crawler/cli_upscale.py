@@ -4,8 +4,8 @@
 import argparse
 import sys
 
-from . import upscaler
-from ._cli import main
+from curios_comic_crawler import upscaler
+from curios_comic_crawler._cli import main
 
 
 def _configure_parser(parser: argparse.ArgumentParser) -> None:

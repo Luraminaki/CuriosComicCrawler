@@ -46,18 +46,45 @@ failing deep inside the code.
 | `folder_data`         | Root data folder                                                         |
 | `folder_save_dl`      | Subfolder downloaded pages are saved to                                  |
 | `folder_save_upscale` | Subfolder upscaled pages are saved to                                    |
-| `folder_models`       | Subfolder super-resolution models are stored in                          |
-| `model_name`          | Super-resolution model family: `edsr`, `espcn`, `fsrcnn`, `fsrcnn-small`, or `lapsrn` |
-| `model_scale`         | Upscaling factor for `model_name` (2/3/4, or 2/4/8 for `lapsrn`)          |
+| `folder_models`       | Subfolder super-resolution models are stored in (used by the `opencv` engine only) |
+| `upscaler`            | Which super-resolution engine/model to upscale with -- see below         |
 | `gray_values`         | Number of posterisation clusters applied to the upscaled image           |
 | `headers`             | HTTP headers sent with every download request                           |
 | `upscale_workers`     | *(optional)* Number of pages to upscale in parallel (one worker process per page in flight). Omit or set to `null` to use one worker per CPU core. |
 
 ### About the models
 
-Model weights come from [EDSR_Tensorflow](https://github.com/Saafke/EDSR_Tensorflow), [TF-ESPCN](https://github.com/fannymonori/TF-ESPCN), [FSRCNN_Tensorflow](https://github.com/Saafke/FSRCNN_Tensorflow), and [TF-LapSRN](https://github.com/fannymonori/TF-LapSRN). You no longer need to download these by hand: the upscaler fetches whichever `model_name`/`model_scale` combination `config.json` asks for into `data/models/` the first time it's needed, and reuses it on later runs.
+Upscaling is pluggable: `upscaler.engine` picks which super-resolution backend processes each
+page. `upscaler.py` only talks to a small `SREngine` interface (`sr_engine.py`); each engine
+lives in its own `sr_engine_<name>.py` module, so adding another one doesn't touch the upscaler
+itself.
 
-Every model file's sha256 is pinned in `model_registry.py` and checked both right after downloading and before reusing an already-cached file, so a truncated download or a `.pb` corrupted on disk gets re-fetched automatically instead of silently being fed to OpenCV.
+**`"engine": "ncnn"`** (default, recommended) -- [realesrgan-ncnn-py](https://github.com/Tohrusky/realesrgan-ncnn-py), tuned for illustration/anime-style art (a better fit for comic pages than the general-photo OpenCV models below, and much faster than EDSR -- see the comparison in [CHANGELOG.md](CHANGELOG.md)). Requires the `ncnn` extra: `pip install -e ".[ncnn]"`. Runs on CPU only -- no Vulkan driver needed. Models are bundled inside the package, so there's nothing to download. See [INSTALL.md](INSTALL.md) for a packaging conflict to watch for if you also install the `opencv` extra.
+
+```json
+"upscaler": {"engine": "ncnn", "ncnn_model": "realesr-animevideov3-x4"}
+```
+
+| `ncnn_model`               | Notes                                  |
+|----------------------------|-----------------------------------------|
+| `realesr-animevideov3-x2`  | Anime-tuned, 2x                         |
+| `realesr-animevideov3-x3`  | Anime-tuned, 3x                         |
+| `realesr-animevideov3-x4`  | Anime-tuned, 4x -- the sweet spot: as good as the others below, ~10x faster |
+| `realesrgan-x4plus-anime`  | Anime-tuned, 4x                         |
+| `realesrgan-x4plus`        | General-purpose (photo) model, 4x       |
+
+**`"engine": "opencv"`** -- OpenCV's `dnn_superres` module, trained on general photos. Requires the `opencv` extra: `pip install -e ".[opencv]"`.
+
+```json
+"upscaler": {"engine": "opencv", "model_name": "edsr", "model_scale": 3}
+```
+
+| Field         | Meaning                                                                 |
+|---------------|--------------------------------------------------------------------------|
+| `model_name`  | Model family: `edsr`, `espcn`, `fsrcnn`, `fsrcnn-small`, or `lapsrn`      |
+| `model_scale` | Upscaling factor for `model_name` (2/3/4, or 2/4/8 for `lapsrn`)          |
+
+Model weights come from [EDSR_Tensorflow](https://github.com/Saafke/EDSR_Tensorflow), [TF-ESPCN](https://github.com/fannymonori/TF-ESPCN), [FSRCNN_Tensorflow](https://github.com/Saafke/FSRCNN_Tensorflow), and [TF-LapSRN](https://github.com/fannymonori/TF-LapSRN). You don't need to download these by hand: the upscaler fetches whichever `model_name`/`model_scale` combination `config.json` asks for into `data/models/` the first time it's needed, and reuses it on later runs. Every model file's sha256 is pinned in `model_registry.py` and checked both right after downloading and before reusing an already-cached file, so a truncated download or a `.pb` corrupted on disk gets re-fetched automatically instead of silently being fed to OpenCV.
 
 Upscaling itself runs across multiple worker processes (see `upscale_workers` above) -- each page is independent, so this uses all CPU cores by default instead of processing pages one at a time.
 
@@ -103,8 +130,11 @@ All three also work as `python -m curios_comic_crawler.cli_launcher` / `cli_down
 ## Development
 
 ```sh
-pip install -U -e ".[dev]"
+pip install -U -e ".[dev,opencv]"
 ruff check src/ tests/
 basedpyright src/
 pytest
 ```
+
+(paired with the `opencv` extra since the test suite exercises that engine's real code path;
+the `ncnn` engine's tests fake out its dependency instead, so installing it isn't required.)

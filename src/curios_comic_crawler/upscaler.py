@@ -9,44 +9,29 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import cv2
 
-from .config import AppConfig
-from .image_ops import area_posterise, sharpen_image
-from .model_registry import MODEL_MANIFEST, ensure_model
+from curios_comic_crawler.config import AppConfig
+from curios_comic_crawler.image_ops import area_posterise, sharpen_image
+from curios_comic_crawler.sr_engine import EngineInit, SREngine, build_engine, prepare_engine
 
 logger = logging.getLogger(__name__)
 
 # Set once per worker process by `_init_worker`, then reused for every page that process is
 # given -- reloading the model per page would dwarf the actual upscaling cost.
-_worker_sup_res = None
+_worker_engine: SREngine | None = None
 
 
-def _init_worker(model_path: pathlib.Path, algorithm: str, scale: int, worker_count: int) -> None:
-    """Load the super-resolution model once per worker process.
+def _init_worker(engine_init: EngineInit, worker_count: int) -> None:
+    """Build this worker process's super-resolution engine once, for reuse across pages.
 
     Args:
-        model_path (pathlib.Path): Local path to the model weight file.
-        algorithm (str): Name passed to `DnnSuperResImpl.setModel`, e.g. `"edsr"`.
-        scale (int): Upscaling factor the model was trained for.
-        worker_count (int): Number of worker processes running concurrently, used to split the
-            available CPU threads between them.
+        engine_init (EngineInit): Picklable data from `prepare_engine`, describing which
+            engine/model this worker should build (see `sr_engine.py`).
+        worker_count (int): Number of worker processes running concurrently, used by
+            engines that need to split shared resources (e.g. OpenCV's thread pool) between
+            them.
     """
-    global _worker_sup_res  # noqa: PLW0603
-
-    # Parallelism comes from running multiple worker *processes*; on top of that, each process
-    # would also spin up its own internal OpenCV thread pool, oversubscribing the CPU if left
-    # uncapped. Split the machine's threads evenly between worker processes instead of always
-    # pinning each one to a single thread -- with a single worker, that used to leave every
-    # other core idle during the (CPU-heavy) model upsample step.
-    cpu_count = os.cpu_count() or 1
-    cv2.setNumThreads(max(1, cpu_count // worker_count))
-
-    # cv2's type stubs don't cover the dnn_superres contrib module.
-    sup_res = cv2.dnn_superres.DnnSuperResImpl_create()  # pyright: ignore[reportAttributeAccessIssue]
-    sup_res.readModel(str(model_path))
-    sup_res.setModel(algorithm, scale)
-    sup_res.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-    sup_res.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-    _worker_sup_res = sup_res
+    global _worker_engine  # noqa: PLW0603
+    _worker_engine = build_engine(engine_init, worker_count)
 
 
 def _process_one(img_path: pathlib.Path, upscale_dir: pathlib.Path, gray_values: int) -> tuple[str, float]:
@@ -60,8 +45,8 @@ def _process_one(img_path: pathlib.Path, upscale_dir: pathlib.Path, gray_values:
     Returns:
         tuple[str, float]: The page's filename and how long it took to process, in seconds.
     """
-    if _worker_sup_res is None:
-        raise RuntimeError('Worker process was not initialized with a model (see _init_worker)')
+    if _worker_engine is None:
+        raise RuntimeError('Worker process was not initialized with an engine (see _init_worker)')
 
     tic = time.time()
 
@@ -69,7 +54,7 @@ def _process_one(img_path: pathlib.Path, upscale_dir: pathlib.Path, gray_values:
     if img is None:
         raise ValueError(f'Failed to read image (missing, corrupt, or not an image): {img_path}')
 
-    result = _worker_sup_res.upsample(img)
+    result = _worker_engine.upscale(img)
     result = area_posterise(result, gray_values)
     result = sharpen_image(result)
     cv2.imwrite(str(upscale_dir / img_path.name), result)
@@ -191,13 +176,12 @@ def run(config: AppConfig, *, force: bool = False) -> int:
         logger.info('Nothing to upscale in %s', config.dl_dir)
         return 0
 
-    model_path = ensure_model(config.models_dir, config.model_name, config.model_scale)
-    model_spec = MODEL_MANIFEST[(config.model_name, config.model_scale)]
+    engine_init = prepare_engine(config)
 
     worker_count = _resolve_worker_count(config.upscale_workers, len(remaining))
     logger.info(
-        'Using model %s with %sx scaling across %s worker process(es)',
-        model_spec.name, model_spec.scale, worker_count,
+        'Using upscaler engine=%s across %s worker process(es)',
+        config.upscaler.engine, worker_count,
     )
 
     completed_count = 0
@@ -207,7 +191,7 @@ def run(config: AppConfig, *, force: bool = False) -> int:
     with ProcessPoolExecutor(
         max_workers=worker_count,
         initializer=_init_worker,
-        initargs=(model_path, model_spec.algorithm, model_spec.scale, worker_count),
+        initargs=(engine_init, worker_count),
     ) as executor:
         futures = [
             executor.submit(_process_one, img_path, config.upscale_dir, config.gray_values)

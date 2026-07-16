@@ -6,14 +6,15 @@ import pathlib
 import pytest
 from pydantic import ValidationError
 
-from curios_comic_crawler.config import AppConfig, load_config
+from curios_comic_crawler.config import AppConfig, NcnnUpscaleConfig, OpenCVUpscaleConfig, load_config
 
 
 def test_valid_config_validates(valid_config_dict: dict) -> None:
     config = AppConfig.model_validate(valid_config_dict)
 
     assert config.bd_name == 'SA'
-    assert config.model_name == 'edsr'
+    assert isinstance(config.upscaler, OpenCVUpscaleConfig)
+    assert config.upscaler.model_name == 'edsr'
 
 
 def test_missing_required_field_is_rejected(valid_config_dict: dict) -> None:
@@ -47,10 +48,32 @@ def test_filename_variants_requires_at_least_one_entry(valid_config_dict: dict) 
 
 
 def test_unknown_model_scale_combo_is_rejected(valid_config_dict: dict) -> None:
-    valid_config_dict['model_name'] = 'lapsrn'
-    valid_config_dict['model_scale'] = 3  # lapsrn only ships 2/4/8
+    valid_config_dict['upscaler'] = {'engine': 'opencv', 'model_name': 'lapsrn', 'model_scale': 3}  # 2/4/8 only
 
     with pytest.raises(ValidationError, match='lapsrn'):
+        AppConfig.model_validate(valid_config_dict)
+
+
+def test_ncnn_upscaler_config_validates(valid_config_dict: dict) -> None:
+    valid_config_dict['upscaler'] = {'engine': 'ncnn', 'ncnn_model': 'realesrgan-x4plus-anime'}
+
+    config = AppConfig.model_validate(valid_config_dict)
+
+    assert isinstance(config.upscaler, NcnnUpscaleConfig)
+    assert config.upscaler.ncnn_model == 'realesrgan-x4plus-anime'
+
+
+def test_unknown_upscaler_engine_is_rejected(valid_config_dict: dict) -> None:
+    valid_config_dict['upscaler'] = {'engine': 'pytorch', 'model_name': 'edsr', 'model_scale': 3}
+
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(valid_config_dict)
+
+
+def test_ncnn_upscaler_config_requires_ncnn_model(valid_config_dict: dict) -> None:
+    valid_config_dict['upscaler'] = {'engine': 'ncnn'}
+
+    with pytest.raises(ValidationError):
         AppConfig.model_validate(valid_config_dict)
 
 

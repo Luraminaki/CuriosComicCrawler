@@ -9,8 +9,10 @@
     "folder_save_dl": "DL/",
     "folder_save_upscale": "UPSCALE/",
     "folder_models": "models/",
-    "model_name": "edsr",
-    "model_scale": 3,
+    "upscaler": {
+        "engine": "ncnn",
+        "ncnn_model": "realesr-animevideov3-x4"
+    },
     "gray_values": 32,
     "upscale_workers": 1,
     "headers": {

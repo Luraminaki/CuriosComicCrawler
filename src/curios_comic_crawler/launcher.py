@@ -8,8 +8,8 @@ when `--mode` is given -- the latter is meant for cron jobs / scripted re-runs.
 import argparse
 import logging
 
-from . import downloader, upscaler
-from .config import AppConfig
+from curios_comic_crawler import downloader, upscaler
+from curios_comic_crawler.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
