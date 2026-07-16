@@ -26,11 +26,18 @@ def _init_worker(engine_init: EngineInit, worker_count: int) -> None:
     Args:
         engine_init (EngineInit): Picklable data from `prepare_engine`, describing which
             engine/model this worker should build (see `sr_engine.py`).
-        worker_count (int): Number of worker processes running concurrently, used by
-            engines that need to split shared resources (e.g. OpenCV's thread pool) between
-            them.
+        worker_count (int): Number of worker processes running concurrently, used to split
+            shared resources between them.
     """
     global _worker_engine  # noqa: PLW0603
+
+    # `area_posterise`/`sharpen_image` always run through cv2 in `_process_one`, regardless of
+    # which SR engine produced the upscaled image -- without this, cv2 defaults to using every
+    # CPU thread for its own internal parallelism (e.g. `cv2.kmeans`), oversubscribing the CPU
+    # once more than one worker process is running concurrently.
+    cpu_count = os.cpu_count() or 1
+    cv2.setNumThreads(max(1, cpu_count // worker_count))
+
     _worker_engine = build_engine(engine_init, worker_count)
 
 

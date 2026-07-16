@@ -59,19 +59,29 @@ page. `upscaler.py` only talks to a small `SREngine` interface (`sr_engine.py`);
 lives in its own `sr_engine_<name>.py` module, so adding another one doesn't touch the upscaler
 itself.
 
-**`"engine": "ncnn"`** (default, recommended) -- [realesrgan-ncnn-py](https://github.com/Tohrusky/realesrgan-ncnn-py), tuned for illustration/anime-style art (a better fit for comic pages than the general-photo OpenCV models below, and much faster than EDSR -- see the comparison in [CHANGELOG.md](CHANGELOG.md)). Requires the `ncnn` extra: `pip install -e ".[ncnn]"`. Runs on CPU only -- no Vulkan driver needed. Models are bundled inside the package, so there's nothing to download. See [INSTALL.md](INSTALL.md) for a packaging conflict to watch for if you also install the `opencv` extra.
+**`"engine": "onnx"`** (default, recommended) -- [ONNX Runtime](https://onnxruntime.ai/) models
+tuned for illustration/anime-style art (a better fit for comic pages than the general-photo
+OpenCV models below, and much faster than EDSR). Needs no install extra: `onnxruntime` is a
+base dependency, and each model (converted once from official
+[xinntao/Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) weights via
+[tools/convert_onnx_model.py](tools/convert_onnx_model.py)) ships inside this package under
+`src/curios_comic_crawler/assets/` -- nothing to download, no GPU/Vulkan driver needed. This
+replaced an earlier `ncnn`-based engine that turned out to depend on an archived, unmaintained
+package; see [CHANGELOG.md](CHANGELOG.md).
 
 ```json
-"upscaler": {"engine": "ncnn", "ncnn_model": "realesr-animevideov3-x4"}
+"upscaler": {"engine": "onnx", "onnx_model": "realesr-animevideov3-x4"}
 ```
 
-| `ncnn_model`               | Notes                                  |
-|----------------------------|-----------------------------------------|
-| `realesr-animevideov3-x2`  | Anime-tuned, 2x                         |
-| `realesr-animevideov3-x3`  | Anime-tuned, 3x                         |
-| `realesr-animevideov3-x4`  | Anime-tuned, 4x -- the sweet spot: as good as the others below, ~10x faster |
-| `realesrgan-x4plus-anime`  | Anime-tuned, 4x                         |
-| `realesrgan-x4plus`        | General-purpose (photo) model, 4x       |
+| `onnx_model`                  | Notes                                                       |
+|--------------------------------|--------------------------------------------------------------|
+| `realesr-animevideov3-x4`     | Default if omitted. SRVGGNetCompact, ~2.5 MB, the fast option |
+| `realesrgan-x4plus-anime-6b`  | RRDBNet (6 blocks), ~17 MB, heavier/slower but potentially higher quality |
+
+More models can be converted with `tools/convert_onnx_model.py` (see
+[tools/README.md](tools/README.md)); wiring a newly converted one in as an `onnx_model` choice
+means also adding it to `models.py`'s `OnnxModelName` and `sr_engine_onnx.py`'s
+`_MODEL_FILENAMES`.
 
 **`"engine": "opencv"`** -- OpenCV's `dnn_superres` module, trained on general photos. Requires the `opencv` extra: `pip install -e ".[opencv]"`.
 
@@ -131,10 +141,15 @@ All three also work as `python -m curios_comic_crawler.cli_launcher` / `cli_down
 
 ```sh
 pip install -U -e ".[dev,opencv]"
-ruff check src/ tests/
+ruff check src/ tests/ tools/
 basedpyright src/
 pytest
 ```
 
-(paired with the `opencv` extra since the test suite exercises that engine's real code path;
-the `ncnn` engine's tests fake out its dependency instead, so installing it isn't required.)
+(paired with the `opencv` extra so the test suite can exercise that engine's real code path
+too; the `onnx` engine needs nothing extra since `onnxruntime` and its model are already part
+of the base install.)
+
+See [tools/README.md](tools/README.md) for the script that regenerates the bundled ONNX model
+from its official source weights -- not needed to use or develop the package, only if you're
+changing which model is bundled.

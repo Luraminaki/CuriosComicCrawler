@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from curios_comic_crawler.model_registry import MODEL_MANIFEST
-from curios_comic_crawler.models import ModelName, NcnnModelName
+from curios_comic_crawler.models import ModelName, OnnxModelName
 
 _WINDOWS_RESERVED_NAMES = frozenset({
     'CON', 'PRN', 'AUX', 'NUL',
@@ -43,22 +43,21 @@ class OpenCVUpscaleConfig(BaseModel):
         return self
 
 
-class NcnnUpscaleConfig(BaseModel):
-    """Upscale using `realesrgan-ncnn-py` (see `sr_engine_ncnn.py`).
+class OnnxUpscaleConfig(BaseModel):
+    """Upscale using a bundled ONNX Runtime model (see `sr_engine_onnx.py`).
 
-    Requires the `ncnn` extra (`pip install curios-comic-crawler[ncnn]`); runs on CPU only.
+    No install extra needed -- `onnxruntime` is a base dependency, and the model ships inside
+    this package. Runs on CPU only.
 
     Attributes:
-        ncnn_model: Which bundled Real-ESRGAN model to use. The `realesr-animevideov3-*`
-            family and `realesrgan-x4plus-anime` are tuned for illustration/anime-style art;
-            `realesrgan-x4plus` is the general-purpose (photo) model.
+        onnx_model: Which bundled model to use. Tuned for illustration/anime-style art.
     """
 
-    engine: Literal['ncnn'] = 'ncnn'
-    ncnn_model: NcnnModelName
+    engine: Literal['onnx'] = 'onnx'
+    onnx_model: OnnxModelName = 'realesr-animevideov3-x4'
 
 
-UpscaleConfig = Annotated[OpenCVUpscaleConfig | NcnnUpscaleConfig, Field(discriminator='engine')]
+UpscaleConfig = Annotated[OpenCVUpscaleConfig | OnnxUpscaleConfig, Field(discriminator='engine')]
 
 
 class AppConfig(BaseModel):
@@ -87,7 +86,7 @@ class AppConfig(BaseModel):
         folder_save_upscale: Subfolder (under `folder_data`) upscaled pages are saved to.
         folder_models: Subfolder (under `folder_data`) super-resolution models are stored in.
         upscaler: Which super-resolution engine/model to upscale with -- either
-            `OpenCVUpscaleConfig` (`engine: "opencv"`) or `NcnnUpscaleConfig` (`engine: "ncnn"`).
+            `OpenCVUpscaleConfig` (`engine: "opencv"`) or `OnnxUpscaleConfig` (`engine: "onnx"`).
         gray_values: Number of posterisation clusters `area_posterise` reduces each image to.
         headers: HTTP headers sent with every download request.
         upscale_workers: Number of pages to upscale in parallel, each in its own process (every

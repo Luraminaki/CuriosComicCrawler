@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "curios-comic-crawler"
-version = "0.4.0"
+version = "0.5.0"
 description = "Download Sequential Art comic pages and locally upscale them with OpenCV super-resolution models."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,15 +14,23 @@ dependencies = [
     "numpy>=1.26",
     "requests>=2.31",
     "pydantic>=2.7",
+    # Powers the default "onnx" upscale engine (see sr_engine_onnx.py) with a small model
+    # bundled directly in this package -- lightweight and actively maintained, unlike the
+    # ncnn-based engine this replaced, so it's a base dependency rather than an extra.
+    "onnxruntime>=1.17",
 ]
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6", "basedpyright>=1.18", "pytest>=8.0"]
-# Pick one, matching `upscaler.engine` in config.json -- see INSTALL.md for why installing
-# both in the same environment needs an extra step (opencv-python/opencv-contrib-python
-# both ship under the `cv2` package name and conflict with each other).
+# Only needed for the "opencv" upscale engine (see sr_engine_opencv.py). Not a base dependency
+# since opencv-contrib-python is heavy and conflicts with plain opencv-python if anything else
+# in the environment depends on that instead.
 opencv = ["opencv-contrib-python>=4.9"]
-ncnn = ["realesrgan-ncnn-py>=2.0"]
+# Only needed to run tools/convert_onnx_model.py, which regenerates the bundled model in
+# sr_engine_onnx.py's assets/ from the official PyTorch weights. Not needed to use the
+# package -- onnxruntime (a base dependency) is all that's needed to run the already-converted,
+# already-bundled model.
+convert = ["torch>=2.0", "onnx>=1.14"]
 
 [project.scripts]
 comiccrawler = "curios_comic_crawler.cli_launcher:cli"

@@ -2,97 +2,87 @@
 
 ## Prerequisites
 
-- **Python 3.11 or 3.12** if you intend to use the `ncnn` engine (recommended, see below):
-  `realesrgan-ncnn-py` only publishes prebuilt wheels for Python 3.8-3.12, with no source
-  distribution to build from, so 3.13/3.14 will fail with `No matching distribution found
-  for realesrgan-ncnn-py`. The `opencv` engine alone has no such ceiling; only pick a newer
-  Python if you're sure you'll stick to that engine. Get Python from
-  [python.org](https://www.python.org/downloads/) (Windows/macOS) or your distro's package
-  manager (Linux); on Windows, `py -0` lists every version already installed, and
-  `py -3.12 -m venv .venv` targets one specifically if `python`/`py` defaults to something
-  newer.
-- **A C library OpenCV needs at runtime**: whichever OpenCV wheel you end up with (see
-  "Choose an upscaling engine" below) ships pre-built, but on Linux it still dynamically
-  loads `libGL.so.1`, which isn't always installed on minimal/headless systems. See the
-  Linux sections below if you hit an `ImportError: libGL.so.1: cannot open shared object
-  file` when running the tools.
+- **Python 3.11+**. Get it from [python.org](https://www.python.org/downloads/) (Windows/macOS)
+  or your distro's package manager (Linux).
+- **A C library OpenCV needs at runtime, only if you use the `opencv` engine** (see "Choose an
+  upscaling engine" below): the `opencv-contrib-python` wheel ships pre-built, but on Linux it
+  still dynamically loads `libGL.so.1`, which isn't always installed on minimal/headless
+  systems. See the Linux sections below if you hit an `ImportError: libGL.so.1: cannot open
+  shared object file` when running the tools. The default `onnx` engine has no such dependency.
 
-You do **not** need to manually download the super-resolution models anymore -- the
-`opencv` engine downloads whichever model/scale your `config.json` asks for the first time
-it's needed, and reuses it afterwards. The `ncnn` engine's models are bundled inside its
-package instead, so there's nothing to download for that one either.
+You do **not** need to manually download the super-resolution models -- the `opencv` engine
+downloads whichever model/scale your `config.json` asks for the first time it's needed, and
+reuses it afterwards. The `onnx` engine's model is bundled inside this package instead, so
+there's nothing to download for that one either.
 
 ## Choose an upscaling engine
 
-`comiccrawler-download` (page downloading only) needs nothing beyond the base install. But
-upscaling (`comiccrawler-upscale`, or `comiccrawler` in `upscale`/`both` mode) needs one of
-two optional extras, matching the `engine` you pick in `config.json`'s `upscaler` section:
+`comiccrawler-download` (page downloading only) needs nothing beyond the base install. Upscaling
+(`comiccrawler-upscale`, or `comiccrawler` in `upscale`/`both` mode) works out of the box with
+the default engine, or with one optional extra for the alternative:
 
-| Extra    | `upscaler.engine` | What it installs                                                        |
-|----------|--------------------|--------------------------------------------------------------------------|
-| `ncnn`   | `"ncnn"`           | `realesrgan-ncnn-py` -- illustration/anime-tuned models, CPU-only, no Vulkan driver needed. **Recommended** for comic pages, and much faster than `opencv`/EDSR. |
-| `opencv` | `"opencv"`         | `opencv-contrib-python` -- classic photo-trained models (EDSR/ESPCN/FSRCNN/LapSRN).           |
+| Engine (`upscaler.engine`) | Extra needed        | What it uses                                                        |
+|-----------------------------|----------------------|------------------------------------------------------------------------|
+| `"onnx"` (default)          | none -- base install | A small bundled [ONNX Runtime](https://onnxruntime.ai/) model tuned for illustration/anime-style art. CPU-only, no GPU/Vulkan driver needed. |
+| `"opencv"`                  | `pip install -e ".[opencv]"` | `opencv-contrib-python` -- classic photo-trained models (EDSR/ESPCN/FSRCNN/LapSRN). |
 
-Install whichever one matches the engine you intend to use, e.g. `pip install -e ".[ncnn]"`.
-The shipped `config.json` defaults to `"ncnn"`.
-
-> [!WARNING]
-> Installing **both** extras in the same environment can break the `opencv` engine:
-> `realesrgan-ncnn-py` depends on plain `opencv-python`, which conflicts with
-> `opencv-contrib-python` -- both ship files under the same `cv2/` package, and whichever
-> installs last silently wins, which can delete `cv2.dnn_superres`. If you do want both
-> engines available, reinstall contrib last:
-> ```sh
-> pip install --force-reinstall --no-deps opencv-contrib-python
-> ```
-> This is a known upstream packaging issue (`opencv-python` and `opencv-contrib-python`
-> were never meant to coexist in one environment), not something specific to this project.
+The shipped `config.json` defaults to `"onnx"`, so a plain base install is enough to try it.
 
 ## Windows
 
 ```powershell
-py -3.12 -m venv .venv
+python -m venv .venv
 .venv\Scripts\activate
-pip install -U -e ".[ncnn]"
+pip install -U -e .
 ```
-
-`py -3.12` picks Python 3.12 explicitly, regardless of what `python`/`py` alone would default
-to (see the `ncnn` note above) -- swap in `-3.11` if that's what you have installed instead.
 
 ## Linux -- Debian / Ubuntu
 
 ```sh
 sudo apt update
-sudo apt install -y python3-venv libgl1
+sudo apt install -y python3-venv
 
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -U -e ".[ncnn]"
+pip install -U -e .
 ```
+
+(add `libgl1` to the `apt install` line above if you'll use the `opencv` extra -- see the
+Prerequisites note.)
 
 ## Linux -- Arch
 
 ```sh
-sudo pacman -S --needed python libglvnd
+sudo pacman -S --needed python
 
 python -m venv .venv
 source .venv/bin/activate
-pip install -U -e ".[ncnn]"
+pip install -U -e .
 ```
+
+(add `libglvnd` to the `pacman` line above if you'll use the `opencv` extra -- see the
+Prerequisites note.)
 
 ## Optional: development tools
 
 Linting (`ruff`), type checking (`basedpyright`), and the test suite (`pytest`) are
-provided as an optional dependency group -- paired here with the `opencv` extra since the
-test suite exercises that engine's real code path (the `ncnn` engine's tests fake out its
-dependency instead, so installing it isn't required for `pytest` to pass):
+provided as an optional dependency group -- paired here with the `opencv` extra so the test
+suite can exercise that engine's real code path too (the `onnx` engine needs nothing extra,
+since `onnxruntime` and its model are already part of the base install):
 
 ```sh
 pip install -U -e ".[dev,opencv]"
-ruff check src/ tests/
+ruff check src/ tests/ tools/
 basedpyright src/
 pytest
 ```
+
+## Optional: regenerating the bundled ONNX model
+
+Only needed if you're changing which model `sr_engine_onnx.py` bundles -- see
+[tools/README.md](tools/README.md). Requires the `convert` extra (`pip install -e ".[convert]"`,
+which pulls in `torch`, a large download) and is unrelated to installing or developing the
+package otherwise.
 
 ## Verifying the install
 

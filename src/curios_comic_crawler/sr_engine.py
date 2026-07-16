@@ -2,10 +2,10 @@
 """Pluggable super-resolution backends for the upscaler.
 
 `upscaler.py` only ever talks to the `SREngine` protocol below; which concrete implementation
-backs it (OpenCV's classic photo-trained models, or `realesrgan-ncnn-py`'s illustration-tuned
-ones) is decided by `AppConfig.upscaler`. Adding a third engine means implementing `SREngine`
-plus a `prepare()`/`build()` pair in a new module, and adding one member to the
-`UpscaleConfig` union in `config.py` -- nothing here or in `upscaler.py` needs to change.
+backs it (OpenCV's classic photo-trained models, or the bundled ONNX Runtime model tuned for
+illustration/anime art) is decided by `AppConfig.upscaler`. Adding a third engine means
+implementing `SREngine` plus a `prepare()`/`build()` pair in a new module, and adding one member
+to the `UpscaleConfig` union in `config.py` -- nothing here or in `upscaler.py` needs to change.
 
 The `prepare()`/`build()` split exists because engine setup that needs network I/O (the OpenCV
 engine's model download+integrity check) must happen exactly once, in the main process, before
@@ -18,10 +18,10 @@ from typing import Protocol
 
 import numpy as np
 
-from curios_comic_crawler import sr_engine_ncnn, sr_engine_opencv
-from curios_comic_crawler.config import AppConfig, NcnnUpscaleConfig, OpenCVUpscaleConfig
+from curios_comic_crawler import sr_engine_onnx, sr_engine_opencv
+from curios_comic_crawler.config import AppConfig, OnnxUpscaleConfig, OpenCVUpscaleConfig
 
-EngineInit = sr_engine_opencv.OpenCVEngineInit | sr_engine_ncnn.NcnnEngineInit
+EngineInit = sr_engine_opencv.OpenCVEngineInit | sr_engine_onnx.OnnxEngineInit
 
 
 class SREngine(Protocol):
@@ -53,8 +53,8 @@ def prepare_engine(config: AppConfig) -> EngineInit:
     upscaler_config = config.upscaler
     if isinstance(upscaler_config, OpenCVUpscaleConfig):
         return sr_engine_opencv.prepare(upscaler_config, config.models_dir)
-    if isinstance(upscaler_config, NcnnUpscaleConfig):
-        return sr_engine_ncnn.prepare(upscaler_config)
+    if isinstance(upscaler_config, OnnxUpscaleConfig):
+        return sr_engine_onnx.prepare(upscaler_config)
     raise AssertionError(f'Unhandled upscaler config: {upscaler_config!r}')  # pragma: no cover
 
 
@@ -71,7 +71,7 @@ def build_engine(engine_init: EngineInit, worker_count: int) -> SREngine:
         SREngine: A ready-to-use engine instance, local to the calling worker process.
     """
     if isinstance(engine_init, sr_engine_opencv.OpenCVEngineInit):
-        return sr_engine_opencv.build(engine_init, worker_count)
-    if isinstance(engine_init, sr_engine_ncnn.NcnnEngineInit):
-        return sr_engine_ncnn.build(engine_init)
+        return sr_engine_opencv.build(engine_init)
+    if isinstance(engine_init, sr_engine_onnx.OnnxEngineInit):
+        return sr_engine_onnx.build(engine_init, worker_count)
     raise AssertionError(f'Unhandled engine init: {engine_init!r}')  # pragma: no cover
