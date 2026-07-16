@@ -83,7 +83,7 @@ More models can be converted with `tools/convert_onnx_model.py` (see
 means also adding it to `models.py`'s `OnnxModelName` and `sr_engine_onnx.py`'s
 `_MODEL_FILENAMES`.
 
-**`"engine": "opencv"`** -- OpenCV's `dnn_superres` module, trained on general photos. Requires the `opencv` extra: `pip install -e ".[opencv]"`.
+**`"engine": "opencv"`** -- OpenCV's `dnn_superres` module, trained on general photos. No extra install needed (`opencv-contrib-python` is a base dependency, needed regardless of engine since posterising/sharpening always run through `cv2`).
 
 ```json
 "upscaler": {"engine": "opencv", "model_name": "edsr", "model_scale": 3}
@@ -140,15 +140,11 @@ All three also work as `python -m curios_comic_crawler.cli_launcher` / `cli_down
 ## Development
 
 ```sh
-pip install -U -e ".[dev,opencv]"
+pip install -U -e ".[dev]"
 ruff check src/ tests/ tools/
 basedpyright src/
 pytest
 ```
-
-(paired with the `opencv` extra so the test suite can exercise that engine's real code path
-too; the `onnx` engine needs nothing extra since `onnxruntime` and its model are already part
-of the base install.)
 
 See [tools/README.md](tools/README.md) for the script that regenerates the bundled ONNX model
 from its official source weights -- not needed to use or develop the package, only if you're

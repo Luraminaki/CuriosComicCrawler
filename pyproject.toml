@@ -14,7 +14,17 @@ dependencies = [
     "numpy>=1.26",
     "requests>=2.31",
     "pydantic>=2.7",
-    # Powers the default "onnx" upscale engine (see sr_engine_onnx.py) with a small model
+    # Needed unconditionally, regardless of which upscale engine is selected: upscaler.py's
+    # imread/imwrite and image_ops.py's posterise/sharpen steps (cv2.kmeans, cv2.GaussianBlur)
+    # always run through cv2, on every page, after whichever engine produced the upscaled
+    # image. The "contrib" variant specifically (not plain opencv-python) is required for the
+    # "opencv" engine's cv2.dnn_superres module -- since cv2 is needed either way, there's no
+    # download/disk saving in trying to make this an extra, only the risk of reintroducing the
+    # opencv-python/opencv-contrib-python conflict documented in INSTALL.md (previously caused
+    # by the now-removed ncnn engine's own opencv-python dependency; nothing left in this
+    # project's dependency tree pulls in plain opencv-python anymore).
+    "opencv-contrib-python>=4.9",
+    # Powers the default "onnx" upscale engine (see sr_engine_onnx.py) with small models
     # bundled directly in this package -- lightweight and actively maintained, unlike the
     # ncnn-based engine this replaced, so it's a base dependency rather than an extra.
     "onnxruntime>=1.17",
@@ -22,10 +32,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6", "basedpyright>=1.18", "pytest>=8.0"]
-# Only needed for the "opencv" upscale engine (see sr_engine_opencv.py). Not a base dependency
-# since opencv-contrib-python is heavy and conflicts with plain opencv-python if anything else
-# in the environment depends on that instead.
-opencv = ["opencv-contrib-python>=4.9"]
 # Only needed to run tools/convert_onnx_model.py, which regenerates the bundled model in
 # sr_engine_onnx.py's assets/ from the official PyTorch weights. Not needed to use the
 # package -- onnxruntime (a base dependency) is all that's needed to run the already-converted,
