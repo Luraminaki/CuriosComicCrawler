@@ -16,20 +16,21 @@ python tools/convert_onnx_model.py
 Prompts for which model to convert (like `comiccrawler`'s own menu), or skip the prompt with
 `--model <key>`:
 
-| `--model`                     | Architecture   | Bundled + wired into `config.json`? |
-|--------------------------------|----------------|----------------------------------------|
-| `realesr-animevideov3-x4`     | SRVGGNetCompact | Yes -- the fast, anime-tuned default |
-| `realesrgan-x4plus-anime-6b`  | RRDBNet (6 blocks) | Yes -- heavier, potentially higher quality |
-| `realesr-general-x4v3`        | SRVGGNetCompact | No -- convertible, but not currently an `OnnxModelName` choice |
-| `realesrgan-x4plus`           | RRDBNet (23 blocks) | No -- general-purpose (photo), heaviest/slowest, not currently wired in |
+| `--model`                     | Architecture   | Size    |
+|--------------------------------|----------------|-----------|
+| `realesr-animevideov3-x4`     | SRVGGNetCompact | ~2.5 MB, the fast default |
+| `realesrgan-x4plus-anime-6b`  | RRDBNet (6 blocks) | ~17 MB, heavier, potentially higher quality |
+| `realesr-general-x4v3`        | SRVGGNetCompact | ~4.9 MB, general-purpose, same speed class as the default |
+| `realesrgan-x4plus`           | RRDBNet (23 blocks) | ~64 MB, general-purpose (photo), heaviest/slowest |
 
-By default it overwrites that model's slot in `src/curios_comic_crawler/assets/`; pass
+All four are currently bundled and wired into `config.json`'s `upscaler.onnx_model`. By default
+this tool overwrites that model's slot in `src/curios_comic_crawler/assets/`; pass
 `--output <path>` to write elsewhere instead (e.g. to try a model before committing to it).
 
-Converting one of the "No" rows above does **not** by itself make it usable from
-`config.json` -- it only produces the `.onnx` file. Making it a real `upscaler.onnx_model`
-choice means also adding it to `models.py`'s `OnnxModelName` and `sr_engine_onnx.py`'s
-`_MODEL_FILENAMES`, matching the two models that already are.
+Converting a model that isn't in the table above (if you add one to `_MODELS` in
+`convert_onnx_model.py`) does **not** by itself make it usable from `config.json` -- it only
+produces the `.onnx` file. Making it a real `upscaler.onnx_model` choice means also adding it to
+`models.py`'s `OnnxModelName` and `sr_engine_onnx.py`'s `_MODEL_FILENAMES`.
 
 Both architectures (`_archs.py`) were verified this session by loading each official checkpoint
 with `strict=True` (every layer name/shape must match exactly) and by visually comparing real

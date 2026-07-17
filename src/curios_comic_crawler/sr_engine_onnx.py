@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SREngine implementation backed by ONNX Runtime, using bundled anime-tuned models.
+"""SREngine implementation backed by ONNX Runtime, using bundled models.
 
 Runs on CPU (`CPUExecutionProvider`) with no extra runtime dependency beyond `onnxruntime`
 itself, which is a base dependency of this package (lightweight, actively maintained, wheels
@@ -24,6 +24,8 @@ _ASSETS_DIR = pathlib.Path(__file__).parent / 'assets'
 _MODEL_FILENAMES: dict[OnnxModelName, str] = {
     'realesr-animevideov3-x4': 'realesr-animevideov3.onnx',
     'realesrgan-x4plus-anime-6b': 'realesrgan-x4plus-anime-6b.onnx',
+    'realesr-general-x4v3': 'realesr-general-x4v3.onnx',
+    'realesrgan-x4plus': 'realesrgan-x4plus.onnx',
 }
 
 

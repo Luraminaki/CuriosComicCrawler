@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "curios-comic-crawler"
-version = "0.5.0"
+version = "0.6.0"
 description = "Download Sequential Art comic pages and locally upscale them with OpenCV super-resolution models."
 readme = "README.md"
 requires-python = ">=3.11"

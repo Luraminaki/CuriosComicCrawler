@@ -3,6 +3,10 @@
 All notable changes to this project are documented here. Versioning loosely
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.6.0
+
+- Added the two remaining convertible models as real `upscaler.onnx_model` choices, for exhaustivity: `realesr-general-x4v3` (SRVGGNetCompact, ~4.9 MB, general-purpose) and `realesrgan-x4plus` (RRDBNet 23-block, ~64 MB, general-purpose photo, the heaviest/slowest option) -- all four models `tools/convert_onnx_model.py` can produce are now bundled and wired in
+
 ## 0.5.0
 
 - Replaced the `ncnn` engine (`realesrgan-ncnn-py`) with a new `onnx` engine (`onnxruntime`) -- the `ncnn` package turned out to be archived/unmaintained (as was every alternative checked in that same pybind11-around-ncnn-vulkan category), which also explained why it had no wheels for Python 3.13/3.14

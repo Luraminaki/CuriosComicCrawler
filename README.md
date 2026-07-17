@@ -59,11 +59,10 @@ page. `upscaler.py` only talks to a small `SREngine` interface (`sr_engine.py`);
 lives in its own `sr_engine_<name>.py` module, so adding another one doesn't touch the upscaler
 itself.
 
-**`"engine": "onnx"`** (default, recommended) -- [ONNX Runtime](https://onnxruntime.ai/) models
-tuned for illustration/anime-style art (a better fit for comic pages than the general-photo
-OpenCV models below, and much faster than EDSR). Needs no install extra: `onnxruntime` is a
-base dependency, and each model (converted once from official
-[xinntao/Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) weights via
+**`"engine": "onnx"`** (default, recommended) -- [ONNX Runtime](https://onnxruntime.ai/) models,
+mostly tuned for illustration/anime-style art (a better fit for comic pages than EDSR, and much
+faster). Needs no install extra: `onnxruntime` is a base dependency, and each model (converted
+once from official [xinntao/Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) weights via
 [tools/convert_onnx_model.py](tools/convert_onnx_model.py)) ships inside this package under
 `src/curios_comic_crawler/assets/` -- nothing to download, no GPU/Vulkan driver needed. This
 replaced an earlier `ncnn`-based engine that turned out to depend on an archived, unmaintained
@@ -77,11 +76,13 @@ package; see [CHANGELOG.md](CHANGELOG.md).
 |--------------------------------|--------------------------------------------------------------|
 | `realesr-animevideov3-x4`     | Default if omitted. SRVGGNetCompact, ~2.5 MB, the fast option |
 | `realesrgan-x4plus-anime-6b`  | RRDBNet (6 blocks), ~17 MB, heavier/slower but potentially higher quality |
+| `realesr-general-x4v3`        | SRVGGNetCompact, ~4.9 MB, general-purpose, same speed class as the default |
+| `realesrgan-x4plus`           | RRDBNet (23 blocks), ~64 MB, general-purpose (photo, not anime-tuned), the heaviest/slowest option |
 
-More models can be converted with `tools/convert_onnx_model.py` (see
-[tools/README.md](tools/README.md)); wiring a newly converted one in as an `onnx_model` choice
-means also adding it to `models.py`'s `OnnxModelName` and `sr_engine_onnx.py`'s
-`_MODEL_FILENAMES`.
+All four are bundled -- there's no separate download step for any of them. More models can be
+converted with `tools/convert_onnx_model.py` (see [tools/README.md](tools/README.md)); wiring a
+newly converted one in as an `onnx_model` choice means also adding it to `models.py`'s
+`OnnxModelName` and `sr_engine_onnx.py`'s `_MODEL_FILENAMES`.
 
 **`"engine": "opencv"`** -- OpenCV's `dnn_superres` module, trained on general photos. No extra install needed (`opencv-contrib-python` is a base dependency, needed regardless of engine since posterising/sharpening always run through `cv2`).
 
