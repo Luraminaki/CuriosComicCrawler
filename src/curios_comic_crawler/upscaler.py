@@ -6,14 +6,21 @@ import os
 import pathlib
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 
 import cv2
 
+from curios_comic_crawler._worker_threads import threads_per_worker
 from curios_comic_crawler.config import AppConfig
 from curios_comic_crawler.image_ops import area_posterise, sharpen_image
 from curios_comic_crawler.sr_engine import EngineInit, SREngine, build_engine, prepare_engine
 
 logger = logging.getLogger(__name__)
+
+# How many batches' worth of futures to keep in flight per worker (see `run`'s `batch_size`) --
+# large enough that no worker ever waits idle for the next batch, small enough to bound memory
+# for a very large backlog.
+_MAX_IN_FLIGHT_BATCHES_PER_WORKER = 4
 
 # Set once per worker process by `_init_worker`, then reused for every page that process is
 # given -- reloading the model per page would dwarf the actual upscaling cost.
@@ -35,8 +42,7 @@ def _init_worker(engine_init: EngineInit, worker_count: int) -> None:
     # which SR engine produced the upscaled image -- without this, cv2 defaults to using every
     # CPU thread for its own internal parallelism (e.g. `cv2.kmeans`), oversubscribing the CPU
     # once more than one worker process is running concurrently.
-    cpu_count = os.cpu_count() or 1
-    cv2.setNumThreads(max(1, cpu_count // worker_count))
+    cv2.setNumThreads(threads_per_worker(worker_count))
 
     _worker_engine = build_engine(engine_init, worker_count)
 
@@ -64,7 +70,10 @@ def _process_one(img_path: pathlib.Path, upscale_dir: pathlib.Path, gray_values:
     result = _worker_engine.upscale(img)
     result = area_posterise(result, gray_values)
     result = sharpen_image(result)
-    cv2.imwrite(str(upscale_dir / img_path.name), result)
+
+    out_path = upscale_dir / img_path.name
+    if not cv2.imwrite(str(out_path), result):
+        raise OSError(f'Failed to write upscaled image (unsupported extension, full disk, or permissions): {out_path}')
 
     return img_path.name, round(time.time() - tic, 2)
 
@@ -194,36 +203,61 @@ def run(config: AppConfig, *, force: bool = False) -> int:
     completed_count = 0
     failed_count = 0
     total_elapsed = 0.0
+    pool_broken = False
+
+    # Pages are submitted in batches rather than all at once: for a very large backlog, queuing
+    # every remaining page upfront would hold one `Future` (and its pickled call args) per page
+    # in memory at the same time, for no benefit -- only `worker_count` can run at once anyway.
+    batch_size = worker_count * _MAX_IN_FLIGHT_BATCHES_PER_WORKER
 
     with ProcessPoolExecutor(
         max_workers=worker_count,
         initializer=_init_worker,
         initargs=(engine_init, worker_count),
     ) as executor:
-        futures = [
-            executor.submit(_process_one, img_path, config.upscale_dir, config.gray_values)
-            for img_path in remaining
-        ]
+        for batch_start in range(0, len(remaining), batch_size):
+            batch = remaining[batch_start:batch_start + batch_size]
+            futures = [
+                executor.submit(_process_one, img_path, config.upscale_dir, config.gray_values)
+                for img_path in batch
+            ]
 
-        for future in as_completed(futures):
-            try:
-                name, elapsed = future.result()
-            except Exception:
-                failed_count += 1
-                logger.exception('A page failed to upscale')
-                continue
+            for future in as_completed(futures):
+                try:
+                    name, elapsed = future.result()
+                except BrokenProcessPool:
+                    # A worker crashed while initializing its engine (e.g. out of memory loading
+                    # a heavy model across many worker processes) -- every other pending future
+                    # will raise the same exception, so report the root cause once instead of
+                    # once per remaining page.
+                    still_pending = len(remaining) - completed_count - failed_count
+                    logger.error(
+                        'Worker pool crashed while initializing the upscale engine (likely out '
+                        'of memory) -- aborting the remaining %s page(s) instead of reporting '
+                        'them individually', still_pending,
+                    )
+                    failed_count += still_pending
+                    pool_broken = True
+                    break
+                except Exception:
+                    failed_count += 1
+                    logger.exception('A page failed to upscale')
+                    continue
 
-            completed_count += 1
-            total_elapsed += elapsed
+                completed_count += 1
+                total_elapsed += elapsed
 
-            avg_per_page = total_elapsed / completed_count
-            remaining_count = len(remaining) - completed_count - failed_count
-            eta_seconds = _estimate_eta_seconds(avg_per_page, remaining_count, worker_count)
+                avg_per_page = total_elapsed / completed_count
+                remaining_count = len(remaining) - completed_count - failed_count
+                eta_seconds = _estimate_eta_seconds(avg_per_page, remaining_count, worker_count)
 
-            logger.info(
-                'Image %s processed in %ss (%s/%s done). Estimated remaining time: %s',
-                name, elapsed, completed_count, len(remaining), _format_duration(eta_seconds),
-            )
+                logger.info(
+                    'Image %s processed in %ss (%s/%s done). Estimated remaining time: %s',
+                    name, elapsed, completed_count, len(remaining), _format_duration(eta_seconds),
+                )
+
+            if pool_broken:
+                break
 
     if failed_count:
         logger.warning('%s of %s page(s) failed to upscale', failed_count, len(remaining))

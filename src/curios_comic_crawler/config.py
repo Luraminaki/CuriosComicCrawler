@@ -8,7 +8,7 @@ import json
 import pathlib
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from curios_comic_crawler.model_registry import MODEL_MANIFEST
 from curios_comic_crawler.models import ModelName, OnnxModelName
@@ -119,6 +119,22 @@ class AppConfig(BaseModel):
             raise ValueError(f'BD_name must be a single path segment, not {value!r}')
         if value.upper() in _WINDOWS_RESERVED_NAMES:
             raise ValueError(f'BD_name {value!r} is a reserved Windows device name')
+        return value
+
+    @field_validator('ext')
+    @classmethod
+    def _check_ext(cls, value: str) -> str:
+        if not value.startswith('.'):
+            raise ValueError(f'ext must start with a leading dot, not {value!r}')
+        return value
+
+    @field_validator('folder_data', 'folder_save_dl', 'folder_save_upscale', 'folder_models')
+    @classmethod
+    def _check_data_folder(cls, value: str, info: ValidationInfo) -> str:
+        if not value:
+            raise ValueError(f'{info.field_name} must not be empty')
+        if '..' in pathlib.PurePath(value).parts:
+            raise ValueError(f'{info.field_name} must not contain ".." path segments: {value!r}')
         return value
 
     @model_validator(mode='after')

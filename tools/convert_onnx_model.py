@@ -204,7 +204,9 @@ def main() -> int:
     """Parse CLI args (or prompt interactively) and run the conversion.
 
     Returns:
-        int: Process exit code (always `0`; failures raise instead).
+        int: Always `0`; conversion failures raise instead of returning a nonzero code. Invalid
+            CLI usage (an unknown `--model`, or `-h`) is handled by `argparse` itself, which
+            exits the process directly and never reaches this function's return.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

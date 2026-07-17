@@ -1,15 +1,30 @@
 """Tests for `curios_comic_crawler.upscaler`.
 
-Actual image upscaling (`_process_one` / `_init_worker`) needs a real OpenCV model and a
-worker process, and is covered by manual end-to-end runs instead -- these tests stick to the
-pure orchestration logic around it.
+`_process_one`/`_init_worker` are exercised here against a fake `SREngine` (no real
+model/worker process needed) to cover the cv2 read/write and thread-capping plumbing around
+them; a real super-resolution model actually producing correct pixels is still only covered by
+manual end-to-end runs.
 """
 
 import pathlib
 
+import cv2
+import numpy as np
 import pytest
 
 from curios_comic_crawler import upscaler
+
+
+class _IdentityEngine:
+    """A no-op `SREngine` stand-in: returns the image unchanged."""
+
+    def upscale(self, image: np.ndarray) -> np.ndarray:
+        return image
+
+
+def _write_test_image(path: pathlib.Path, size: tuple[int, int] = (8, 8)) -> None:
+    image = np.random.default_rng(0).integers(0, 256, size=(*size, 3), dtype=np.uint8)
+    cv2.imwrite(str(path), image)
 
 
 def test_select_remaining_without_force_skips_completed() -> None:
@@ -81,3 +96,65 @@ def test_eta_does_not_shrink_below_one_round_in_the_tail() -> None:
 
 def test_eta_is_zero_when_nothing_remains() -> None:
     assert upscaler._estimate_eta_seconds(avg_per_page=2.0, remaining_count=0, worker_count=4) == 0.0
+
+
+def test_process_one_writes_upscaled_page(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(upscaler, '_worker_engine', _IdentityEngine())
+    img_path = tmp_path / 'page.jpg'
+    _write_test_image(img_path)
+    upscale_dir = tmp_path / 'out'
+    upscale_dir.mkdir()
+
+    name, elapsed = upscaler._process_one(img_path, upscale_dir, gray_values=4)
+
+    assert name == 'page.jpg'
+    assert elapsed >= 0
+    assert (upscale_dir / 'page.jpg').is_file()
+
+
+def test_process_one_raises_when_engine_not_initialized(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(upscaler, '_worker_engine', None)
+    img_path = tmp_path / 'page.jpg'
+    _write_test_image(img_path)
+
+    with pytest.raises(RuntimeError, match='not initialized'):
+        upscaler._process_one(img_path, tmp_path, gray_values=4)
+
+
+def test_process_one_raises_on_missing_or_corrupt_image(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(upscaler, '_worker_engine', _IdentityEngine())
+    bad_path = tmp_path / 'not_an_image.jpg'
+    bad_path.write_bytes(b'not actually an image')
+
+    with pytest.raises(ValueError, match='Failed to read image'):
+        upscaler._process_one(bad_path, tmp_path, gray_values=4)
+
+
+def test_process_one_raises_when_imwrite_fails(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test: `cv2.imwrite`'s return value must be checked, not ignored."""
+    monkeypatch.setattr(upscaler, '_worker_engine', _IdentityEngine())
+    img_path = tmp_path / 'page.jpg'
+    _write_test_image(img_path)
+    monkeypatch.setattr(upscaler.cv2, 'imwrite', lambda *_a, **_k: False)
+
+    with pytest.raises(OSError, match='Failed to write upscaled image'):
+        upscaler._process_one(img_path, tmp_path, gray_values=4)
+
+
+def test_init_worker_sets_engine_and_caps_cv2_threads(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, int] = {}
+    monkeypatch.setattr(upscaler.cv2, 'setNumThreads', lambda n: captured.setdefault('n', n))
+    monkeypatch.setattr(upscaler, 'threads_per_worker', lambda _worker_count: 3)
+    monkeypatch.setattr(upscaler, 'build_engine', lambda _engine_init, _worker_count: _IdentityEngine())
+
+    try:
+        upscaler._init_worker(engine_init=object(), worker_count=2)
+
+        assert captured['n'] == 3
+        assert isinstance(upscaler._worker_engine, _IdentityEngine)
+    finally:
+        upscaler._worker_engine = None

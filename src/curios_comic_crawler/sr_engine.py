@@ -55,7 +55,7 @@ def prepare_engine(config: AppConfig) -> EngineInit:
         return sr_engine_opencv.prepare(upscaler_config, config.models_dir)
     if isinstance(upscaler_config, OnnxUpscaleConfig):
         return sr_engine_onnx.prepare(upscaler_config)
-    raise AssertionError(f'Unhandled upscaler config: {upscaler_config!r}')  # pragma: no cover
+    raise RuntimeError(f'Unhandled upscaler config: {upscaler_config!r}')  # pragma: no cover
 
 
 def build_engine(engine_init: EngineInit, worker_count: int) -> SREngine:
@@ -74,4 +74,4 @@ def build_engine(engine_init: EngineInit, worker_count: int) -> SREngine:
         return sr_engine_opencv.build(engine_init)
     if isinstance(engine_init, sr_engine_onnx.OnnxEngineInit):
         return sr_engine_onnx.build(engine_init, worker_count)
-    raise AssertionError(f'Unhandled engine init: {engine_init!r}')  # pragma: no cover
+    raise RuntimeError(f'Unhandled engine init: {engine_init!r}')  # pragma: no cover

@@ -1,6 +1,7 @@
 """Tests for `curios_comic_crawler.image_ops`."""
 
 import numpy as np
+import pytest
 
 from curios_comic_crawler.image_ops import area_posterise, sharpen_image
 
@@ -10,6 +11,13 @@ def _gradient_image(height: int = 16, width: int = 16) -> np.ndarray:
     row = np.linspace(0, 255, width, dtype=np.uint8)
     channel = np.tile(row, (height, 1))
     return np.stack([channel, channel, 255 - channel], axis=-1)
+
+
+def test_area_posterise_rejects_non_uint8_dtype() -> None:
+    data = _gradient_image().astype(np.float32)
+
+    with pytest.raises(TypeError, match='uint8'):
+        area_posterise(data, nbr_cluster=4)
 
 
 def test_area_posterise_rejects_out_of_range_cluster_count() -> None:
