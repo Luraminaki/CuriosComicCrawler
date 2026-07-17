@@ -12,17 +12,26 @@ _MAX_CLUSTERS = 255  # uint8 has 256 possible values (0-255)
 
 
 def area_posterise(data: np.ndarray, nbr_cluster: int = 2, nbr_iterations: int = 10) -> np.ndarray:
-    """Apply the K-means clustering algorithm on a N-D array of data (values between 0 and 255).
+    """Apply the K-means clustering algorithm on a N-D array of `uint8` data.
 
     Args:
-        data (np.ndarray): Array of values to clusterize (N-D array with values between 0 and 255).
+        data (np.ndarray): `uint8` array of values to clusterize (N-D array with values between
+            0 and 255). Every caller in this codebase feeds `cv2.imread`/upscaler output, which
+            is always `uint8`; the output is coerced to `uint8` regardless of input dtype, so
+            only `uint8` input is accepted.
         nbr_cluster (int, optional): Number of expected clusters (bigger than 1 and smaller than
             256). Defaults to 2.
         nbr_iterations (int, optional): Number of loops. Defaults to 10.
 
     Returns:
         np.ndarray: Quantized data.
+
+    Raises:
+        TypeError: If `data.dtype` isn't `uint8`.
     """
+    if data.dtype != np.uint8:
+        raise TypeError(f'area_posterise only supports uint8 data, got {data.dtype}')
+
     if not 1 < nbr_cluster <= _MAX_CLUSTERS:
         logger.warning("Change the value of %s for 'nbr_cluster' should be (1 ~ %s)", nbr_cluster, _MAX_CLUSTERS)
         return data
@@ -36,10 +45,7 @@ def area_posterise(data: np.ndarray, nbr_cluster: int = 2, nbr_iterations: int =
         return data
 
     data_1d = data.reshape(-1)
-    if data.dtype == np.uint8:
-        unique_count = np.count_nonzero(np.bincount(data_1d, minlength=256))
-    else:
-        unique_count = np.unique(data_1d).size
+    unique_count = np.count_nonzero(np.bincount(data_1d, minlength=256))
 
     if unique_count <= nbr_cluster:
         logger.warning(

@@ -35,6 +35,7 @@ def main(
     # Parsed before logging is configured, so `--help`/bad arguments exit cleanly without
     # creating a log file.
     parser = argparse.ArgumentParser(prog=script_name)
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     parser.add_argument('-c', '--configuration', help='Configuration file location')
     if configure_parser is not None:
         configure_parser(parser)

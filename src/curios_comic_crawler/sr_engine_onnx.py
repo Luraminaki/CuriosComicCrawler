@@ -9,13 +9,13 @@ xinntao/Real-ESRGAN weights via `tools/convert_onnx_model.py`. Nothing to downlo
 install extra, no external hosting or sha256-pinning needed for it.
 """
 
-import os
 import pathlib
 from typing import NamedTuple
 
 import numpy as np
 import onnxruntime
 
+from curios_comic_crawler._worker_threads import threads_per_worker
 from curios_comic_crawler.config import OnnxUpscaleConfig
 from curios_comic_crawler.models import OnnxModelName
 
@@ -48,9 +48,8 @@ class OnnxEngine:
                 own intra-op parallelism, oversubscribing the CPU once more than one worker is
                 running -- same issue as `sr_engine_opencv.py`'s `cv2.setNumThreads` call.
         """
-        cpu_count = os.cpu_count() or 1
         session_options = onnxruntime.SessionOptions()
-        session_options.intra_op_num_threads = max(1, cpu_count // worker_count)
+        session_options.intra_op_num_threads = threads_per_worker(worker_count)
 
         self._session = onnxruntime.InferenceSession(
             str(engine_init.model_path), sess_options=session_options, providers=['CPUExecutionProvider'],

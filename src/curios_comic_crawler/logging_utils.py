@@ -36,11 +36,11 @@ def _prune_old_runs(log_dir: pathlib.Path, log_file_stem: str, max_runs: int) ->
     if len(runs) <= max_runs:
         return
 
-    # Secondary key on the numeric pid breaks ties deterministically when several runs land in
-    # the same mtime tick (e.g. a burst of quick invocations) -- PIDs increase monotonically
-    # within a reasonable timeframe, so a higher one means a more recent run.
+    # Nanosecond resolution (rather than `st_mtime`'s float seconds) keeps ties between runs
+    # landing in the same tick vanishingly rare, without relying on PID ordering -- PIDs can be
+    # recycled by the OS, so a higher PID is not reliably a more recent run.
     newest_first = sorted(
-        runs, key=lambda pid: (max(p.stat().st_mtime for p in runs[pid]), int(pid)), reverse=True,
+        runs, key=lambda pid: max(p.stat().st_mtime_ns for p in runs[pid]), reverse=True,
     )
     for pid in newest_first[max_runs:]:
         for path in runs[pid]:

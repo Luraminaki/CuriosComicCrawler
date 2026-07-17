@@ -154,7 +154,7 @@ def run(config: AppConfig, *, force: bool = False) -> int:
         # page costs `len(possible_image_names)` fails, not 1. This keeps `fails` counting
         # "consecutive missing pages" while resetting on any success, not accumulating over the
         # whole run.
-        for image_name in possible_image_names:
+        for index, image_name in enumerate(possible_image_names):
             logger.info('Downloading: %s', image_name)
 
             if dl_and_save_img(config.root_site + image_name, config.dl_dir / image_name, config.headers):
@@ -163,7 +163,11 @@ def run(config: AppConfig, *, force: bool = False) -> int:
 
             logger.info('Failed with %s', image_name)
             consecutive_fails += 1
-            time.sleep(_THROTTLE_SECONDS)
+            # Throttle between variant attempts on this same page, but not after the last one --
+            # the unconditional sleep below already throttles the transition to the next page,
+            # so sleeping here too would just double the wait for a fully-missing page.
+            if index < len(possible_image_names) - 1:
+                time.sleep(_THROTTLE_SECONDS)
 
         time.sleep(_THROTTLE_SECONDS)
         next_page += 1
