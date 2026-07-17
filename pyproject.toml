@@ -64,6 +64,8 @@ convention = "google"
 include = ["src"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
