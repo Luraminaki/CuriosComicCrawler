@@ -19,6 +19,8 @@ from curios_comic_crawler.models import OnnxModelName
 _EXPECTED_SHA256: dict[OnnxModelName, str] = {
     'realesr-animevideov3-x4': 'eb179c2a359dab4a4df3316663a0bcae879afc1674aaf4a012c11999fc554b7c',
     'realesrgan-x4plus-anime-6b': '15c99fd2dd3a1c177267394e96b6d9bdaaaba1c0dffd92af9d8e94bf1de05df6',
+    'realesr-general-x4v3': '32eeba5a4bd37287183c6f16d4f721ac3b893a80c14d0c4246d4e90fab46259a',
+    'realesrgan-x4plus': '94cf5497dca9e68acb89df62f0fd6c375e6f32f32a1a3aa9f422a4777eb95ede',
 }
 
 

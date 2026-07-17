@@ -50,7 +50,8 @@ class OnnxUpscaleConfig(BaseModel):
     this package. Runs on CPU only.
 
     Attributes:
-        onnx_model: Which bundled model to use. Tuned for illustration/anime-style art.
+        onnx_model: Which bundled model to use. Most are tuned for illustration/anime-style
+            art; `realesrgan-x4plus` is the general-purpose (photo) exception.
     """
 
     engine: Literal['onnx'] = 'onnx'
