@@ -4,12 +4,20 @@ Maintainer-only scripts. Not part of the installed package.
 
 ## `convert_onnx_model.py`
 
-Converts an official xinntao/Real-ESRGAN PyTorch model to ONNX (downloading the weights,
-verifying their sha256, exporting with dynamic height/width axes, and sanity-checking the
-result), for the `onnx` upscale engine (`sr_engine_onnx.py`).
+Converts an official xinntao/Real-ESRGAN PyTorch model to ONNX, for the `onnx` upscale engine
+(`sr_engine_onnx.py`):
+
+1. downloads the weights to a temporary folder and checks their sha256 before using them;
+2. loads them with `torch.load(..., weights_only=True)` -- the file comes from the network, so
+   it is never unpickled as arbitrary objects;
+3. exports with dynamic height/width axes, into the temporary folder;
+4. sanity-checks the export (it loads in ONNX Runtime and upscales an arbitrary size 4x), and
+   only then copies it to the output path -- a failing export never replaces a bundled model;
+5. prints the new file's sha256 (update `_EXPECTED_SHA256` in `tests/test_sr_engine_onnx.py` if
+   a bundled model changed).
 
 ```sh
-pip install -e ".[convert]"
+pip install -e ".[convert]"     # torch>=2.5 (the first with the `dynamo=` export option) and onnx
 python tools/convert_onnx_model.py
 ```
 
@@ -32,9 +40,9 @@ Converting a model that isn't in the table above (if you add one to `_MODELS` in
 produces the `.onnx` file. Making it a real `upscaler.onnx_model` choice means also adding it to
 `models.py`'s `OnnxModelName` and `sr_engine_onnx.py`'s `_MODEL_FILENAMES`.
 
-Both architectures (`_archs.py`) were verified this session by loading each official checkpoint
-with `strict=True` (every layer name/shape must match exactly) and by visually comparing real
-output against the official implementation -- not just assumed correct from reading the source.
+Both architectures (`_archs.py`) were verified by loading each official checkpoint with
+`strict=True` (every layer name/shape must match exactly) and by visually comparing real output
+against the official implementation -- not just assumed correct from reading the source.
 
-You do not need any of this to use the package -- the already-converted default model is
-already bundled, and running it only needs `onnxruntime` (a base dependency).
+You do not need any of this to use the package -- all four converted models are already
+bundled, and running them only needs `onnxruntime` (a base dependency).

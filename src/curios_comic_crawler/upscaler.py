@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# One worker unless configured otherwise: each worker loads its own model (~0.5 GiB for the
-# light models, ~4.3 GiB for the RRDBNet ones per full page), and a single worker already uses
+# One worker unless configured otherwise: each worker loads its own model (peak ~382 MiB for
+# the light models, ~4.2 GiB for the RRDBNet ones per full page), and a single worker already uses
 # every physical core through ONNX Runtime / OpenCV threads. More workers gain little
 # (measured: 2 workers ~13% faster on the light model) for that much more memory.
 DEFAULT_WORKERS = 1

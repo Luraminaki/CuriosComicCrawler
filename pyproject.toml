@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "curios-comic-crawler"
-version = "0.6.0"
-description = "Download Sequential Art comic pages and locally upscale them with OpenCV super-resolution models."
+version = "0.7.0"
+description = "Download Sequential Art comic pages and locally upscale them with super-resolution models (bundled ONNX models by default, or OpenCV's)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -15,14 +15,15 @@ dependencies = [
     "requests>=2.31",
     "pydantic>=2.7",
     # Needed unconditionally, regardless of which upscale engine is selected: upscaler.py's
-    # imread/imwrite and image_ops.py's posterise/sharpen steps (cv2.kmeans, cv2.GaussianBlur)
-    # always run through cv2, on every page, after whichever engine produced the upscaled
-    # image. The "contrib" variant specifically (not plain opencv-python) is required for the
-    # "opencv" engine's cv2.dnn_superres module -- since cv2 is needed either way, there's no
-    # download/disk saving in trying to make this an extra, only the risk of reintroducing the
-    # opencv-python/opencv-contrib-python conflict documented in INSTALL.md (previously caused
-    # by the now-removed ncnn engine's own opencv-python dependency; nothing left in this
-    # project's dependency tree pulls in plain opencv-python anymore).
+    # imread/imencode and image_ops.py's posterise/sharpen steps (cv2.calcHist/cv2.LUT or
+    # cv2.kmeans, cv2.GaussianBlur) always run through cv2, on every page, after whichever
+    # engine produced the upscaled image. The "contrib" variant specifically (not plain
+    # opencv-python) is required for the "opencv" engine's cv2.dnn_superres module -- since
+    # cv2 is needed either way, there's no
+    # download/disk saving in trying to make this an extra, only the risk of reintroducing an
+    # opencv-python/opencv-contrib-python conflict (previously caused by the now-removed ncnn
+    # engine's own opencv-python dependency; nothing left in this project's dependency tree
+    # pulls in plain opencv-python anymore).
     # <5: OpenCV 5 can no longer read the TensorFlow .pb models the "opencv" engine uses.
     "opencv-contrib-python>=4.9,<5",
     # Powers the default "onnx" upscale engine (see sr_engine_onnx.py) with small models
@@ -33,10 +34,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["ruff>=0.8", "basedpyright>=1.40", "pytest>=8.0", "pylint>=3.3", "radon>=6", "vulture>=2.14"]
-# Only needed to run tools/convert_onnx_model.py, which regenerates the bundled model in
-# sr_engine_onnx.py's assets/ from the official PyTorch weights. Not needed to use the
-# package -- onnxruntime (a base dependency) is all that's needed to run the already-converted,
-# already-bundled model.
+# Only needed to run (or type-check) tools/convert_onnx_model.py, which regenerates the bundled
+# models in sr_engine_onnx.py's assets/ from the official PyTorch weights. Not needed to use
+# the package -- onnxruntime (a base dependency) is all that's needed to run the
+# already-converted, already-bundled models.
 # torch 2.5: first version whose `torch.onnx.export` takes `dynamo=` (used by the converter).
 convert = ["torch>=2.5", "onnx>=1.14"]
 

@@ -4,6 +4,7 @@
 
 - **Python 3.11+**. Get it from [python.org](https://www.python.org/downloads/) (Windows/macOS)
   or your distro's package manager (Linux).
+- **Git**, to get the code (or download the repository as a ZIP from GitHub and extract it).
 - **A C library OpenCV needs at runtime**: the `opencv-contrib-python` wheel ships pre-built,
   but on Linux it still dynamically loads `libGL.so.1`, which isn't always installed on
   minimal/headless systems. See the Linux sections below if you hit an `ImportError:
@@ -29,6 +30,19 @@ The shipped `config.json` defaults to `"onnx"`.
 
 `comiccrawler-download` (page downloading only) doesn't need either engine's dependencies, but
 they're installed regardless since this project doesn't split its base install that finely.
+
+OpenCV is pinned below 5 (`opencv-contrib-python>=4.9,<5`): OpenCV 5 can't read the `opencv`
+engine's `.pb` models. Don't upgrade it past that by hand.
+
+## Get the code
+
+```sh
+git clone https://github.com/Luraminaki/CuriosComicCrawler.git
+cd CuriosComicCrawler
+```
+
+Run every command below from that folder: the shipped `config.json` and the `data/` folder it
+points to are there, and logs are written to the current directory.
 
 ## Windows
 
@@ -61,29 +75,38 @@ pip install -U -e .
 
 ## Optional: development tools
 
-Linting (`ruff`), type checking (`basedpyright`), and the test suite (`pytest`) are
-provided as an optional dependency group:
+Linting and formatting (`ruff`, `pylint`), type checking (`basedpyright`), complexity
+(`radon`), dead code (`vulture`) and the test suite (`pytest`) are provided as the `dev` extra:
 
 ```sh
 pip install -U -e ".[dev]"
-ruff check src/ tests/ tools/
-basedpyright src/
+ruff check .
+ruff format --check .
+basedpyright
+pylint --recursive=y src tests tools
+radon cc -nc src tests tools
+vulture --min-confidence 80 --ignore-names cls src tests tools
 pytest
 ```
+
+`basedpyright` also checks `tools/`, which needs the `convert` extra below
+(`pip install -U -e ".[dev,convert]"`); nothing else does. See
+[README.md](README.md#development) for what each check expects.
 
 ## Optional: regenerating the bundled ONNX models
 
 Only needed if you're changing which models `sr_engine_onnx.py` bundles -- see
 [tools/README.md](tools/README.md). Requires the `convert` extra (`pip install -e ".[convert]"`,
-which pulls in `torch`, a large download) and is unrelated to installing or developing the
-package otherwise.
+which pulls in `torch>=2.5` and `onnx`, a large download) and is unrelated to installing or
+using the package otherwise.
 
 ## Verifying the install
 
 ```sh
+comiccrawler --version
 comiccrawler-download --help
 comiccrawler-upscale --help
 ```
 
-Both should print their usage text. See [README.md](README.md) for how to configure
-and run them.
+The first prints `comiccrawler 0.7.0`; the others print their usage text. See
+[README.md](README.md) for how to configure and run them.
