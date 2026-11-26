@@ -2,30 +2,130 @@
 
 from typing import TYPE_CHECKING
 
+import pytest
 import requests
 
 from curios_comic_crawler import downloader
 
 if TYPE_CHECKING:
     import pathlib
+    from collections.abc import Iterator
 
-    import pytest
+    from curios_comic_crawler.config import AppConfig
 
 
 class _FakeResponse:
-    def __init__(self, ok: bool, status_code: int = 200, content: bytes = b"") -> None:
-        self.ok = ok
+    """A canned HTTP response, usable as a context manager like requests' own."""
+
+    def __init__(
+        self,
+        status_code: int = 200,
+        content: bytes = b"",
+        headers: dict[str, str] | None = None,
+        broken_stream: bool = False,
+    ) -> None:
+        """Describe the answer.
+
+        Args:
+            status_code: HTTP status.
+            content: Body.
+            headers: Response headers; defaults to an image content type.
+            broken_stream: Drop the connection after the first chunk.
+        """
         self.status_code = status_code
+        self.ok = status_code < 400
+        self.headers = {"Content-Type": "image/jpeg"} if headers is None else headers
         self._content = content
+        self._broken_stream = broken_stream
 
     def __enter__(self) -> "_FakeResponse":
+        """Enter the `with` block.
+
+        Returns:
+            The response.
+        """
         return self
 
     def __exit__(self, *_exc_info: object) -> bool:
+        """Leave the `with` block, not swallowing errors.
+
+        Returns:
+            False.
+        """
         return False
 
-    def iter_content(self, chunk_size: int) -> object:
+    def iter_content(self, chunk_size: int) -> "Iterator[bytes]":
+        """Yield the body, possibly dropping the connection midway.
+
+        Args:
+            chunk_size: Ignored.
+
+        Yields:
+            The body.
+
+        Raises:
+            requests.ConnectionError: When the stream is broken.
+        """
+        del chunk_size
         yield self._content
+        if self._broken_stream:
+            raise requests.ConnectionError("dropped mid-stream")
+
+
+class _FakeSession:
+    """Serves scripted answers (responses, or exceptions to raise) in order."""
+
+    def __init__(self, *answers: "_FakeResponse | Exception") -> None:
+        """Script the answers.
+
+        Args:
+            *answers: One per request.
+        """
+        self.answers = list(answers)
+        self.requests = 0
+
+    def get(self, *_args: object, **_kwargs: object) -> _FakeResponse:
+        """Answer the next request.
+
+        Returns:
+            The scripted response.
+
+        Raises:
+            Exception: The scripted exception.
+        """
+        self.requests += 1
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+@pytest.fixture(name="no_sleep")
+def fixture_no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Record the downloader's pauses instead of sleeping.
+
+    Args:
+        monkeypatch: Replaces `time.sleep`.
+
+    Returns:
+        The pauses requested, in seconds.
+    """
+    pauses: list[float] = []
+    monkeypatch.setattr(downloader.time, "sleep", pauses.append)
+    return pauses
+
+
+def fetch(session: _FakeSession, save_path: "pathlib.Path") -> downloader.Fetch:
+    """Fetch one image through a fake session.
+
+    Args:
+        session: The scripted session.
+        save_path: Destination.
+
+    Returns:
+        The outcome.
+    """
+    return downloader.dl_and_save_img(session, "http://x/p.jpg", save_path)  # pyright: ignore[reportArgumentType]
 
 
 def test_get_last_saved_returns_zero_when_empty(config) -> None:
@@ -72,94 +172,78 @@ def test_get_last_saved_not_fooled_by_lexicographic_order(
     assert downloader.get_last_saved(cfg) == 1000
 
 
-def test_dl_and_save_img_saves_on_success(
-    tmp_path: "pathlib.Path", monkeypatch: "pytest.MonkeyPatch"
-) -> None:
-    """A successful response is written to the target file."""
-    monkeypatch.setattr(
-        downloader.requests, "get", lambda *a, **k: _FakeResponse(ok=True, content=b"hello")
-    )
+def test_image_is_saved(tmp_path: "pathlib.Path", no_sleep: list[float]) -> None:
+    """A 200 image answer is written to the target file."""
     save_path = tmp_path / "page.jpg"
 
-    assert downloader.dl_and_save_img("http://example.com/page.jpg", save_path, {}) is True
+    assert fetch(_FakeSession(_FakeResponse(content=b"hello")), save_path) is downloader.Fetch.SAVED
     assert save_path.read_bytes() == b"hello"
-    assert not save_path.with_suffix(".jpg.part").exists()
+    assert no_sleep == []
 
 
-def test_dl_and_save_img_returns_false_on_missing_page(
-    tmp_path: "pathlib.Path",
-    monkeypatch: "pytest.MonkeyPatch",
+@pytest.mark.parametrize("status", [404, 410])
+@pytest.mark.usefixtures("no_sleep")
+def test_only_404_and_410_mean_missing(tmp_path: "pathlib.Path", status: int) -> None:
+    """The site's "not found" answers mean the page doesn't exist, without retrying."""
+    session = _FakeSession(_FakeResponse(status_code=status))
+
+    assert fetch(session, tmp_path / "page.jpg") is downloader.Fetch.MISSING
+    assert session.requests == 1
+
+
+def test_busy_server_is_retried_honouring_retry_after(
+    tmp_path: "pathlib.Path", no_sleep: list[float]
 ) -> None:
-    """A missing page (HTTP 404) is reported as not saved."""
-    monkeypatch.setattr(
-        downloader.requests, "get", lambda *a, **k: _FakeResponse(ok=False, status_code=404)
+    """A 503 used to end the crawl as "missing"; it is retried after the asked delay."""
+    session = _FakeSession(
+        _FakeResponse(status_code=503, headers={"Retry-After": "7"}),
+        _FakeResponse(content=b"hello"),
     )
-    save_path = tmp_path / "page.jpg"
 
-    assert downloader.dl_and_save_img("http://example.com/page.jpg", save_path, {}) is False
-    assert not save_path.exists()
+    assert fetch(session, tmp_path / "page.jpg") is downloader.Fetch.SAVED
+    assert no_sleep == [7.0]
 
 
-def test_dl_and_save_img_returns_false_on_network_error(
-    tmp_path: "pathlib.Path",
-    monkeypatch: "pytest.MonkeyPatch",
+def test_persistent_errors_fail_after_backing_off(
+    tmp_path: "pathlib.Path", no_sleep: list[float]
 ) -> None:
-    """A request that keeps failing is retried, then reported as not saved."""
-    call_count = 0
+    """Network errors are retried with a growing delay, then reported as a failure."""
+    session = _FakeSession(*[requests.ConnectionError("boom")] * 3)
 
-    def _raise(*_args: object, **_kwargs: object) -> None:
-        nonlocal call_count
-        call_count += 1
-        raise requests.ConnectionError("boom")
+    assert fetch(session, tmp_path / "page.jpg") is downloader.Fetch.FAILED
+    assert no_sleep == [2.0, 4.0]
 
-    monkeypatch.setattr(downloader.requests, "get", _raise)
-    monkeypatch.setattr(downloader.time, "sleep", lambda *_a: None)
+
+@pytest.mark.usefixtures("no_sleep")
+def test_dropped_download_is_retried_and_leaves_no_partial_file(tmp_path: "pathlib.Path") -> None:
+    """A connection dropped mid-download is retried; no `.part` file is left behind."""
     save_path = tmp_path / "page.jpg"
+    session = _FakeSession(
+        _FakeResponse(content=b"partial", broken_stream=True), _FakeResponse(content=b"full")
+    )
 
-    assert downloader.dl_and_save_img("http://example.com/page.jpg", save_path, {}) is False
-    assert call_count == downloader._MAX_NETWORK_ATTEMPTS
+    assert fetch(session, save_path) is downloader.Fetch.SAVED
+    assert save_path.read_bytes() == b"full"
+    assert list(tmp_path.iterdir()) == [save_path]
 
 
-def test_dl_and_save_img_recovers_after_transient_network_error(
-    tmp_path: "pathlib.Path",
-    monkeypatch: "pytest.MonkeyPatch",
+@pytest.mark.usefixtures("no_sleep")
+def test_html_instead_of_an_image_is_a_failure(tmp_path: "pathlib.Path") -> None:
+    """An HTML page (error or challenge) is not saved as a .jpg the upscaler would choke on."""
+    session = _FakeSession(_FakeResponse(content=b"<html>", headers={"Content-Type": "text/html"}))
+
+    assert fetch(session, tmp_path / "page.jpg") is downloader.Fetch.FAILED
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.usefixtures("no_sleep")
+def test_run_stops_with_an_error_when_the_site_fails(
+    config: "AppConfig", monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """One failed request followed by a success still saves the page."""
-    call_count = 0
+    """A failure ends the run with exit code 1, not 0 like a normal end of comic."""
+    monkeypatch.setattr(downloader, "dl_and_save_img", lambda *_a, **_k: downloader.Fetch.FAILED)
 
-    def _flaky_get(*_args: object, **_kwargs: object) -> _FakeResponse:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise requests.ConnectionError("boom")
-        return _FakeResponse(ok=True, content=b"hello")
-
-    monkeypatch.setattr(downloader.requests, "get", _flaky_get)
-    monkeypatch.setattr(downloader.time, "sleep", lambda *_a: None)
-    save_path = tmp_path / "page.jpg"
-
-    assert downloader.dl_and_save_img("http://example.com/page.jpg", save_path, {}) is True
-    assert save_path.read_bytes() == b"hello"
-
-
-def test_dl_and_save_img_cleans_up_partial_file_on_stream_error(
-    tmp_path: "pathlib.Path",
-    monkeypatch: "pytest.MonkeyPatch",
-) -> None:
-    """A download cut mid-stream leaves no partial file behind."""
-
-    class _BrokenStreamResponse(_FakeResponse):
-        def iter_content(self, chunk_size: int) -> object:
-            yield b"partial-data"
-            raise requests.ConnectionError("dropped mid-stream")
-
-    monkeypatch.setattr(downloader.requests, "get", lambda *a, **k: _BrokenStreamResponse(ok=True))
-    monkeypatch.setattr(downloader.time, "sleep", lambda *_a: None)
-    save_path = tmp_path / "page.jpg"
-
-    assert downloader.dl_and_save_img("http://example.com/page.jpg", save_path, {}) is False
-    assert not save_path.exists()
-    assert not save_path.with_suffix(".jpg.part").exists()
+    assert downloader.run(config) == 1
 
 
 def test_run_stops_one_page_past_the_last_real_page(
@@ -174,10 +258,10 @@ def test_run_stops_one_page_past_the_last_real_page(
 
     attempted_pages = []
 
-    def fake_dl(link: str, save_path: "pathlib.Path", headers: dict) -> bool:
+    def fake_dl(_session: object, _link: str, save_path: "pathlib.Path") -> downloader.Fetch:
         page = int(save_path.name.split("_")[1])
         attempted_pages.append(page)
-        return page <= 1285
+        return downloader.Fetch.SAVED if page <= 1285 else downloader.Fetch.MISSING
 
     monkeypatch.setattr(downloader, "dl_and_save_img", fake_dl)
 
@@ -196,13 +280,13 @@ def test_run_does_not_terminate_permanently_after_one_early_transient_failure(
 
     call_count = 0
 
-    def fake_dl(link: str, save_path: "pathlib.Path", headers: dict) -> bool:
+    def fake_dl(_session: object, _link: str, save_path: "pathlib.Path") -> downloader.Fetch:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            return False  # one transient failure, right at the start
+            return downloader.Fetch.MISSING  # one missing variant, right at the start
         page = int(save_path.name.split("_")[1])
-        return page <= 5
+        return downloader.Fetch.SAVED if page <= 5 else downloader.Fetch.MISSING
 
     monkeypatch.setattr(downloader, "dl_and_save_img", fake_dl)
 
@@ -219,10 +303,10 @@ def test_run_force_starts_from_page_one(config, monkeypatch: "pytest.MonkeyPatch
 
     attempted_pages = []
 
-    def fake_dl(link: str, save_path: "pathlib.Path", headers: dict) -> bool:
+    def fake_dl(_session: object, _link: str, save_path: "pathlib.Path") -> downloader.Fetch:
         page = int(save_path.name.split("_")[1])
         attempted_pages.append(page)
-        return page <= 1
+        return downloader.Fetch.SAVED if page <= 1 else downloader.Fetch.MISSING
 
     monkeypatch.setattr(downloader, "dl_and_save_img", fake_dl)
 

@@ -19,6 +19,6 @@
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:152.0.4) Gecko/20100101 Firefox/152.0.4",
         "Accept": "*/*",
         "Accept-Language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
-        "Accept-Encoding": "gzip, deflate, br, zstd"
+        "Accept-Encoding": "gzip, deflate"
     }
 }

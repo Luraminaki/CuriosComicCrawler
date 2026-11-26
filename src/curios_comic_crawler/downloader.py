@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Download comic pages listed on the configured site into `config.dl_dir`."""
 
+import enum
 import logging
 import re
 import time
@@ -20,7 +21,11 @@ logger = logging.getLogger(__name__)
 
 _MAX_NETWORK_ATTEMPTS = 3
 _RETRY_BACKOFF_SECONDS = 2
+_MAX_RETRY_DELAY_SECONDS = 60.0  # a server asking for longer is effectively down
 _THROTTLE_SECONDS = 1
+_TIMEOUT_SECONDS = 10
+_MISSING_STATUSES = frozenset({404, 410})
+_RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 
 def _page_prefix(config: "AppConfig", page: int) -> str:
@@ -78,59 +83,143 @@ def get_last_saved(config: "AppConfig") -> int:
     return highest
 
 
-def dl_and_save_img(link: str, save_path: "pathlib.Path", headers: dict[str, str]) -> bool:
-    """Fetch an image from `link` and save it to `save_path`.
+class Fetch(enum.Enum):
+    """Outcome of fetching one page image."""
 
-    Transient network errors (timeouts, connection resets) are retried a few times before
-    giving up, since a couple of blips shouldn't be indistinguishable from the page genuinely
-    not existing.
+    SAVED = "saved"
+    MISSING = "missing"  # the site says the page doesn't exist (404/410)
+    FAILED = "failed"  # anything else: network trouble, server error, not an image
+
+
+def _retry_delay(response: "requests.Response | None", attempt: int) -> float:
+    """How long to wait before the next attempt: the server's `Retry-After`, else a backoff.
 
     Args:
-        link (str): Image source link.
-        save_path (pathlib.Path): Destination path.
-        headers (dict[str, str]): Headers for the request.
+        response (requests.Response | None): The failed response, if one came back.
+        attempt (int): Attempts made so far (1-based).
 
     Returns:
-        bool: True if the download succeeded, False otherwise.
+        float: Seconds to wait (2, 4, 8... unless the server asks for a specific delay).
+    """
+    retry_after = response.headers.get("Retry-After", "") if response is not None else ""
+    if retry_after.isdecimal():  # the date form is rare; fall back to the backoff for it
+        return min(float(retry_after), _MAX_RETRY_DELAY_SECONDS)
+    return float(_RETRY_BACKOFF_SECONDS * 2 ** (attempt - 1))
+
+
+def _save_image(response: "requests.Response", save_path: "pathlib.Path") -> None:
+    """Stream an image response to `save_path` through a temporary file.
+
+    Args:
+        response (requests.Response): A successful response carrying an image.
+        save_path (pathlib.Path): Destination path; only ever complete.
+
+    Raises:
+        requests.RequestException: If the connection drops mid-download.
+        OSError: If the file can't be written.
+    """
+    partial_path = save_path.with_name(f"{save_path.name}.part")
+    try:
+        stream_to_file(response, partial_path, CHUNK_SIZE_BYTES)
+        _ = partial_path.replace(save_path)
+    finally:
+        partial_path.unlink(missing_ok=True)  # left only if the download failed
+
+
+def _attempt(
+    session: "requests.Session", link: str, save_path: "pathlib.Path"
+) -> "tuple[Fetch | None, requests.Response | None]":
+    """Make one attempt at fetching a page image.
+
+    Args:
+        session (requests.Session): The run's HTTP session.
+        link (str): Image URL.
+        save_path (pathlib.Path): Destination path.
+
+    Returns:
+        tuple: The outcome (`None` if the attempt may be retried), and the response if any.
+    """
+    try:
+        with session.get(link, stream=True, timeout=_TIMEOUT_SECONDS) as response:
+            if response.status_code in _MISSING_STATUSES:
+                logger.info("Image not found -- HTTP_CODE: %s", response.status_code)
+                return Fetch.MISSING, response
+            if response.status_code in _RETRYABLE_STATUSES:
+                logger.warning("Server busy or failing -- HTTP_CODE: %s", response.status_code)
+                return None, response
+            if not response.ok:
+                logger.error(
+                    "Unexpected answer for %s -- HTTP_CODE: %s", link, response.status_code
+                )
+                return Fetch.FAILED, response
+            content_type = response.headers.get("Content-Type", "")
+            if not content_type.startswith("image/"):
+                logger.error("%s is not an image (Content-Type %r)", link, content_type)
+                return Fetch.FAILED, response
+            logger.info("Saving: %s", save_path.name)
+            _save_image(response, save_path)
+            return Fetch.SAVED, response
+    except requests.RequestException as error:  # network trouble, possibly mid-download
+        logger.warning("Download of %s failed: %r", link, error)
+        return None, None
+
+
+def dl_and_save_img(session: "requests.Session", link: str, save_path: "pathlib.Path") -> Fetch:
+    """Fetch a page image from `link` and save it to `save_path`.
+
+    Network errors (including a connection dropping mid-download), 429 and 5xx answers are
+    retried with a growing delay; only 404/410 mean the page doesn't exist.
+
+    Args:
+        session (requests.Session): The run's HTTP session (shared connection and headers).
+        link (str): Image URL.
+        save_path (pathlib.Path): Destination path.
+
+    Returns:
+        Fetch: What happened.
     """
     for attempt in range(1, _MAX_NETWORK_ATTEMPTS + 1):
-        try:
-            resource = requests.get(link, headers=headers, stream=True, timeout=5, verify=True)
-        except requests.RequestException as error:
-            logger.warning(
-                "Distant resource %s unreachable (attempt %s/%s): %r",
-                link,
-                attempt,
-                _MAX_NETWORK_ATTEMPTS,
-                error,
-            )
-            if attempt < _MAX_NETWORK_ATTEMPTS:
-                time.sleep(_RETRY_BACKOFF_SECONDS)
-            continue
+        outcome, response = _attempt(session, link, save_path)
+        if outcome is not None:
+            return outcome
+        if attempt < _MAX_NETWORK_ATTEMPTS:
+            time.sleep(_retry_delay(response, attempt))
 
-        with resource:
-            if not resource.ok:
-                logger.info("Image not found -- HTTP_CODE: %s", resource.status_code)
-                return False
+    logger.error("Giving up on %s after %s attempts", link, _MAX_NETWORK_ATTEMPTS)
+    return Fetch.FAILED
 
-            logger.info("Saving: %s", save_path.name)
-            partial_path = save_path.with_suffix(f"{save_path.suffix}.part")
-            try:
-                stream_to_file(resource, partial_path, CHUNK_SIZE_BYTES)
-            except requests.RequestException as error:
-                logger.warning("Download of %s interrupted: %r", link, error)
-                partial_path.unlink(missing_ok=True)
-                return False
 
-        partial_path.replace(save_path)
-        return True
+def _fetch_page(session: "requests.Session", config: "AppConfig", page: int) -> list[Fetch]:
+    """Try each filename variant of a page until one is saved or one fails.
 
-    logger.warning("Giving up on %s after %s network error(s)", link, _MAX_NETWORK_ATTEMPTS)
-    return False
+    Args:
+        session (requests.Session): The run's HTTP session.
+        config (AppConfig): Application configuration.
+        page (int): Page number.
+
+    Returns:
+        list[Fetch]: The outcome of each variant tried, in order.
+    """
+    outcomes: list[Fetch] = []
+    for index, image_name in enumerate(_page_image_names(config, page)):
+        if index:
+            time.sleep(_THROTTLE_SECONDS)  # politeness between requests to the site
+        logger.info("Downloading: %s", image_name)
+        outcome = dl_and_save_img(
+            session, config.root_site + image_name, config.dl_dir / image_name
+        )
+        outcomes.append(outcome)
+        if outcome is not Fetch.MISSING:
+            break
+    return outcomes
 
 
 def run(config: "AppConfig", *, force: bool = False) -> int:
     """Download comic pages that haven't been downloaded yet.
+
+    Pages are fetched in order until `config.fails` consecutive filename variants are missing
+    (404). A fully-missing page costs one fail per filename variant; any saved page resets the
+    count.
 
     Args:
         config (AppConfig): Application configuration.
@@ -138,10 +227,10 @@ def run(config: "AppConfig", *, force: bool = False) -> int:
             over from the first page (existing files are overwritten). Defaults to False.
 
     Returns:
-        int: 0 on success (this function only returns once downloading stops).
+        int: 0 when the run ends on missing pages (the end of the comic), 1 when it stopped on
+        a failure (network, server error, unexpected answer).
     """
     config.dl_dir.mkdir(exist_ok=True, parents=True)
-
     if force:
         logger.info("Force re-download requested, starting over from page 1")
         next_page = 1
@@ -151,36 +240,20 @@ def run(config: "AppConfig", *, force: bool = False) -> int:
         next_page = last_page_available + 1
 
     consecutive_fails = 0
-
-    while consecutive_fails < config.fails:
-        possible_image_names = _page_image_names(config, next_page)
-
-        # Every filename variant is still tried for the current page even once the fail count
-        # has technically reached `config.fails` -- a later variant succeeding (e.g. the site
-        # used the alternate suffix for this page) resets the streak, so a single fully-missing
-        # page costs `len(possible_image_names)` fails, not 1. This keeps `fails` counting
-        # "consecutive missing pages" while resetting on any success, not accumulating over the
-        # whole run.
-        for index, image_name in enumerate(possible_image_names):
-            logger.info("Downloading: %s", image_name)
-
-            if dl_and_save_img(
-                config.root_site + image_name, config.dl_dir / image_name, config.headers
-            ):
-                consecutive_fails = 0
+    with requests.Session() as session:
+        session.headers.update(config.headers)
+        while True:
+            outcomes = _fetch_page(session, config, next_page)
+            if Fetch.FAILED in outcomes:
+                logger.error(
+                    "Stopping at page %s: the site couldn't be read (see above)", next_page
+                )
+                return 1
+            consecutive_fails = 0 if Fetch.SAVED in outcomes else consecutive_fails + len(outcomes)
+            if consecutive_fails >= config.fails:
                 break
-
-            logger.info("Failed with %s", image_name)
-            consecutive_fails += 1
-            # Throttle between variant attempts on this same page, but not after the last one --
-            # the unconditional sleep below already throttles the transition to the next page,
-            # so sleeping here too would just double the wait for a fully-missing page.
-            if index < len(possible_image_names) - 1:
-                time.sleep(_THROTTLE_SECONDS)
-
-        time.sleep(_THROTTLE_SECONDS)
-        next_page += 1
+            time.sleep(_THROTTLE_SECONDS)
+            next_page += 1
 
     logger.info("Nothing more to download. Process ending.")
-
     return 0
