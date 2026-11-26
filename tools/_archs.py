@@ -13,19 +13,26 @@ immediately after construction, which overwrites it completely -- so it has no e
 converted output either way.
 """
 
+from typing import final
+
 import torch
 from torch import nn
 from torch.nn import functional as F  # noqa: N812 (torch's own idiomatic import alias)
 
 
+@final
 class SRVGGNetCompact(nn.Module):
-    """A compact VGG-style super-resolution network. Reproduced from `realesrgan/archs/srvgg_arch.py`.
+    """A compact VGG-style super-resolution network.
+
+    Reproduced from `realesrgan/archs/srvgg_arch.py`.
 
     Used by `realesr-animevideov3` and `realesr-general-x4v3`.
     """
 
-    def __init__(  # noqa: PLR0913
+    # Mirrors the upstream architecture's hyperparameters; keyword-only, all defaulted.
+    def __init__(  # noqa: PLR0913  # pylint: disable=too-many-arguments
         self,
+        *,
         num_in_ch: int = 3,
         num_out_ch: int = 3,
         num_feat: int = 64,
@@ -49,14 +56,14 @@ class SRVGGNetCompact(nn.Module):
         self.upscale = upscale
 
         self.body = nn.ModuleList()
-        self.body.append(nn.Conv2d(num_in_ch, num_feat, 3, 1, 1))
-        self.body.append(self._activation(act_type, num_feat))
+        _ = self.body.append(nn.Conv2d(num_in_ch, num_feat, 3, 1, 1))
+        _ = self.body.append(self._activation(act_type, num_feat))
 
         for _ in range(num_conv):
-            self.body.append(nn.Conv2d(num_feat, num_feat, 3, 1, 1))
-            self.body.append(self._activation(act_type, num_feat))
+            _ = self.body.append(nn.Conv2d(num_feat, num_feat, 3, 1, 1))
+            _ = self.body.append(self._activation(act_type, num_feat))
 
-        self.body.append(nn.Conv2d(num_feat, num_out_ch * upscale * upscale, 3, 1, 1))
+        _ = self.body.append(nn.Conv2d(num_feat, num_out_ch * upscale * upscale, 3, 1, 1))
         self.upsampler = nn.PixelShuffle(upscale)
 
     @staticmethod
@@ -102,8 +109,9 @@ class SRVGGNetCompact(nn.Module):
         return out
 
 
+@final
 class _ResidualDenseBlock(nn.Module):
-    """Residual Dense Block, used inside `_RRDB`. Reproduced from `basicsr/archs/rrdbnet_arch.py`."""
+    """Residual Dense Block, used inside `_RRDB` (from `basicsr/archs/rrdbnet_arch.py`)."""
 
     def __init__(self, num_feat: int = 64, num_grow_ch: int = 32) -> None:
         """Build the five densely-connected conv layers.
@@ -137,6 +145,7 @@ class _ResidualDenseBlock(nn.Module):
         return x5 * 0.2 + x
 
 
+@final
 class _RRDB(nn.Module):
     """Residual in Residual Dense Block, used inside `RRDBNet`."""
 
@@ -167,7 +176,8 @@ class _RRDB(nn.Module):
         return out * 0.2 + x
 
 
-class RRDBNet(nn.Module):
+@final
+class RRDBNet(nn.Module):  # pylint: disable=too-many-instance-attributes  # upstream layers
     """ESRGAN-style network used by `RealESRGAN_x4plus`/`RealESRGAN_x4plus_anime_6B`.
 
     Only the `scale=4` path is reproduced (matching every model this tool currently converts) --
@@ -175,8 +185,10 @@ class RRDBNet(nn.Module):
     included.
     """
 
-    def __init__(  # noqa: PLR0913
+    # Mirrors the upstream architecture's hyperparameters; keyword-only, all defaulted.
+    def __init__(  # noqa: PLR0913  # pylint: disable=too-many-arguments
         self,
+        *,
         num_in_ch: int = 3,
         num_out_ch: int = 3,
         scale: int = 4,

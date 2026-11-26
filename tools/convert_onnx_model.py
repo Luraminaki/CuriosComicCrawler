@@ -18,17 +18,18 @@ height/width axes instead, so it can't just reuse that script verbatim.
 
 import argparse
 import dataclasses
-import hashlib
 import pathlib
+import shutil
 import sys
 import tempfile
 from typing import TYPE_CHECKING
 
 import numpy as np
 import onnxruntime
-import requests
 import torch
 from _archs import RRDBNet, SRVGGNetCompact
+
+from curios_comic_crawler._http import download_verified, sha256_of
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -84,7 +85,7 @@ _MODELS: dict[str, _ModelSpec] = {
         ),
         _ModelSpec(
             key="realesrgan-x4plus-anime-6b",
-            description="RRDBNet, anime-tuned (6 blocks), 4x -- heavier, higher quality than animevideov3",
+            description="RRDBNet, anime-tuned (6 blocks), 4x -- heavier, better than animevideov3",
             url="https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
             sha256="f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da",
             filename="realesrgan-x4plus-anime-6b.onnx",
@@ -120,29 +121,6 @@ def _prompt_model() -> str:
         print(f"{answer!r} is not a valid choice.")
 
 
-def _download_weights(spec: _ModelSpec, dest: pathlib.Path) -> None:
-    """Download `spec`'s official weights to `dest`, refusing to keep them if the hash is wrong.
-
-    Args:
-        spec (_ModelSpec): Which model to download.
-        dest (pathlib.Path): Where to write the downloaded `.pth` file.
-
-    Raises:
-        ValueError: If the downloaded content's sha256 doesn't match `spec.sha256`.
-    """
-    print(f"Downloading {spec.url}")
-    response = requests.get(spec.url, timeout=30)
-    response.raise_for_status()
-
-    digest = hashlib.sha256(response.content).hexdigest()
-    if digest != spec.sha256:
-        raise ValueError(
-            f"Downloaded weights failed integrity check: expected sha256 {spec.sha256}, got {digest}"
-        )
-
-    dest.write_bytes(response.content)
-
-
 def _verify(onnx_path: pathlib.Path) -> None:
     """Sanity-check the exported graph: does it load, and does it 4x an arbitrary input size?
 
@@ -154,7 +132,7 @@ def _verify(onnx_path: pathlib.Path) -> None:
     """
     session = onnxruntime.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     dummy = np.random.default_rng(0).random((1, 3, 32, 48), dtype=np.float32)
-    (output,) = session.run(None, {"input": dummy})
+    output = np.asarray(session.run(None, {"input": dummy})[0])
 
     expected_shape = (1, 3, 32 * 4, 48 * 4)
     if output.shape != expected_shape:
@@ -172,22 +150,25 @@ def convert(spec: _ModelSpec, output_path: pathlib.Path) -> None:
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         weights_path = pathlib.Path(tmp_dir) / pathlib.Path(spec.url).name
-        _download_weights(spec, weights_path)
+        print(f"Downloading {spec.url}")
+        download_verified(spec.url, weights_path, spec.sha256)
 
         model = spec.build_model()
-        state_dict = torch.load(weights_path, map_location="cpu")
+        # weights_only: the file comes from the network; never unpickle arbitrary objects.
+        state_dict = torch.load(weights_path, map_location="cpu", weights_only=True)
         # Matches RealESRGANer's own loading logic: prefer the EMA (exponential moving average)
         # weights when present, since that's what every official inference path uses.
         key = "params_ema" if "params_ema" in state_dict else "params"
-        model.load_state_dict(state_dict[key])
-        model.eval()
+        _ = model.load_state_dict(state_dict[key])
+        _ = model.eval()
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        dummy_input = torch.rand(1, 3, 64, 64)
-        torch.onnx.export(
+        # Export and check next to the target first: a model failing the check never
+        # replaces the bundled one.
+        exported = pathlib.Path(tmp_dir) / output_path.name
+        _ = torch.onnx.export(
             model,
-            dummy_input,
-            str(output_path),
+            (torch.rand(1, 3, 64, 64),),
+            str(exported),
             export_params=True,
             opset_version=13,
             input_names=["input"],
@@ -196,17 +177,17 @@ def convert(spec: _ModelSpec, output_path: pathlib.Path) -> None:
                 "input": {0: "batch", 2: "height", 3: "width"},
                 "output": {0: "batch", 2: "height", 3: "width"},
             },
-            dynamo=False,
+            dynamo=False,  # the TorchScript exporter (the keyword exists from torch 2.5)
         )
+        _verify(exported)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        _ = shutil.copyfile(exported, output_path)
 
     print(f"Exported to {output_path}")
-    _verify(output_path)
-
-    digest = hashlib.sha256(output_path.read_bytes()).hexdigest()
-    print(f"sha256: {digest}")
+    print(f"sha256: {sha256_of(output_path)}")
     print(
         "If this is the bundled model and the hash changed, update _EXPECTED_SHA256 in "
-        "tests/test_sr_engine_onnx.py."
+        + "tests/test_sr_engine_onnx.py."
     )
 
 
@@ -219,12 +200,12 @@ def main() -> int:
             exits the process directly and never reaches this function's return.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    _ = parser.add_argument(
         "--model",
         choices=sorted(_MODELS),
         help="Skip the interactive menu and convert this model directly.",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--output",
         type=pathlib.Path,
         help="Where to write the .onnx file. Defaults to this model's slot in assets/.",

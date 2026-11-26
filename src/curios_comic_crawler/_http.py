@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""Shared HTTP streaming helper used by the downloader and the model registry."""
+"""Shared download helpers: streaming to disk, hashing, verified atomic downloads.
 
+Used by the page downloader, the model registry and `tools/convert_onnx_model.py`.
+"""
+
+import hashlib
+import pathlib
+import tempfile
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import pathlib
+import requests
 
-    import requests
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 CHUNK_SIZE_BYTES = 256 * 1024
+DOWNLOAD_TIMEOUT_SECONDS = 30
 
 
 def stream_to_file(
@@ -23,4 +30,70 @@ def stream_to_file(
     """
     with path.open("wb") as target:
         for chunk in response.iter_content(chunk_size):
-            target.write(chunk)
+            _ = target.write(chunk)
+
+
+def _chunks(path: pathlib.Path) -> "Iterator[bytes]":
+    """Read a file chunk by chunk (bounded memory, whatever its size).
+
+    Args:
+        path (pathlib.Path): The file.
+
+    Yields:
+        bytes: Successive chunks of at most `CHUNK_SIZE_BYTES`.
+    """
+    with path.open("rb") as source:
+        while chunk := source.read(CHUNK_SIZE_BYTES):
+            yield chunk
+
+
+def sha256_of(path: pathlib.Path) -> str:
+    """Hash a file without loading it whole into memory.
+
+    Args:
+        path (pathlib.Path): The file.
+
+    Returns:
+        str: Its SHA-256, as 64 lowercase hex digits.
+    """
+    digest = hashlib.sha256()
+    for chunk in _chunks(path):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download_verified(url: str, target: pathlib.Path, sha256: str) -> None:
+    """Download a file and move it into place only if its SHA-256 matches.
+
+    The body is streamed to a uniquely named temporary file next to `target` (two runs
+    downloading the same file can't mix their writes), checked, then renamed over `target`
+    (so `target` is either absent, previous, or complete and verified). The temporary file is
+    removed whatever happens.
+
+    Args:
+        url (str): Where to download from.
+        target (pathlib.Path): Final path; its folder is created if needed.
+        sha256 (str): Expected SHA-256 of the content.
+
+    Raises:
+        requests.RequestException: If the download fails.
+        ValueError: If the content doesn't match `sha256`.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=target.parent, prefix=f".{target.name}.", suffix=".part", delete=False
+    ) as temporary_file:
+        temporary = pathlib.Path(temporary_file.name)
+    try:
+        with requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+            _ = response.raise_for_status()
+            stream_to_file(response, temporary)
+        digest = sha256_of(temporary)
+        if digest != sha256:
+            raise ValueError(
+                f"{target.name} failed its integrity check: expected sha256 {sha256}, "
+                + f"got {digest}"
+            )
+        _ = temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)

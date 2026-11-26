@@ -4,13 +4,13 @@
 against the real engine -- no mocking needed, unlike the ncnn engine this replaced.
 """
 
-import hashlib
 from typing import get_args
 
 import numpy as np
 import pytest
 
 from curios_comic_crawler import sr_engine_onnx
+from curios_comic_crawler._http import sha256_of
 from curios_comic_crawler.config import OnnxUpscaleConfig
 from curios_comic_crawler.models import OnnxModelName
 
@@ -18,7 +18,9 @@ from curios_comic_crawler.models import OnnxModelName
 # If a regenerated model's hash legitimately changes, update it here to match.
 _EXPECTED_SHA256: dict[OnnxModelName, str] = {
     "realesr-animevideov3-x4": "eb179c2a359dab4a4df3316663a0bcae879afc1674aaf4a012c11999fc554b7c",
-    "realesrgan-x4plus-anime-6b": "15c99fd2dd3a1c177267394e96b6d9bdaaaba1c0dffd92af9d8e94bf1de05df6",
+    "realesrgan-x4plus-anime-6b": (
+        "15c99fd2dd3a1c177267394e96b6d9bdaaaba1c0dffd92af9d8e94bf1de05df6"
+    ),
     "realesr-general-x4v3": "32eeba5a4bd37287183c6f16d4f721ac3b893a80c14d0c4246d4e90fab46259a",
     "realesrgan-x4plus": "94cf5497dca9e68acb89df62f0fd6c375e6f32f32a1a3aa9f422a4777eb95ede",
 }
@@ -35,9 +37,7 @@ def test_every_onnx_model_name_has_a_filename_and_expected_hash() -> None:
 def test_bundled_model_matches_expected_hash(model: OnnxModelName) -> None:
     """The bundled ONNX models are byte-for-byte the expected ones."""
     model_path = sr_engine_onnx._ASSETS_DIR / sr_engine_onnx._MODEL_FILENAMES[model]
-    digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
-
-    assert digest == _EXPECTED_SHA256[model]
+    assert sha256_of(model_path) == _EXPECTED_SHA256[model]  # streamed: the files are 64 MB
 
 
 @pytest.mark.parametrize("model", get_args(OnnxModelName))

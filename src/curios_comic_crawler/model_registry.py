@@ -6,13 +6,10 @@ repositories linked from the project's README. Rather than requiring a manual do
 model is fetched into `data/models/` the first time it is requested and reused afterwards.
 """
 
-import hashlib
 import logging
 from typing import TYPE_CHECKING
 
-import requests
-
-from curios_comic_crawler._http import CHUNK_SIZE_BYTES, stream_to_file
+from curios_comic_crawler._http import download_verified, sha256_of
 from curios_comic_crawler.models import ModelSpec
 
 if TYPE_CHECKING:
@@ -22,7 +19,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_REQUEST_TIMEOUT_SECONDS = 30
 
 _EDSR_BASE = "https://raw.githubusercontent.com/Saafke/EDSR_Tensorflow/master/models"
 _ESPCN_BASE = "https://raw.githubusercontent.com/fannymonori/TF-ESPCN/master/export"
@@ -30,7 +26,8 @@ _FSRCNN_BASE = "https://raw.githubusercontent.com/Saafke/FSRCNN_Tensorflow/maste
 _LAPSRN_BASE = "https://raw.githubusercontent.com/fannymonori/TF-LapSRN/master/export"
 
 
-def _spec(  # noqa: PLR0913
+# One row of the manifest table below: positional on purpose, so each entry reads as a row.
+def _spec(  # noqa: PLR0913, PLR0917  # pylint: disable=too-many-arguments,too-many-positional-arguments
     name: "ModelName",
     scale: int,
     filename: str,
@@ -172,14 +169,6 @@ MODEL_MANIFEST: dict[tuple["ModelName", int], ModelSpec] = {
 }
 
 
-def _sha256_of(path: "pathlib.Path") -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as model_file:
-        for chunk in iter(lambda: model_file.read(CHUNK_SIZE_BYTES), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def ensure_model(
     models_dir: "pathlib.Path", model_name: "ModelName", model_scale: int
 ) -> "pathlib.Path":
@@ -207,31 +196,13 @@ def ensure_model(
     target_path = models_dir / spec.filename
 
     if target_path.is_file() and target_path.stat().st_size > 0:
-        if _sha256_of(target_path) == spec.sha256:
+        if sha256_of(target_path) == spec.sha256:
             return target_path
         logger.warning("%s failed integrity check, re-downloading", target_path)
-        target_path.unlink()
 
     logger.info(
         "Model %s (x%s) not found locally, downloading from %s", spec.name, spec.scale, spec.url
     )
-    models_dir.mkdir(parents=True, exist_ok=True)
-
-    partial_path = target_path.with_suffix(f"{target_path.suffix}.part")
-    with requests.get(spec.url, stream=True, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
-        response.raise_for_status()
-        stream_to_file(response, partial_path, CHUNK_SIZE_BYTES)
-
-    digest = _sha256_of(partial_path)
-    if digest != spec.sha256:
-        partial_path.unlink(missing_ok=True)
-        raise ValueError(
-            f"Downloaded {spec.filename} failed integrity check: expected sha256 {spec.sha256}, got {digest}",
-        )
-
-    # Atomic rename: a crash mid-download leaves a `.part` file, never a corrupt `.pb` that
-    # looks valid to the `is_file()` check above on the next run.
-    partial_path.replace(target_path)
+    download_verified(spec.url, target_path, spec.sha256)
     logger.info("Saved model to %s", target_path)
-
     return target_path

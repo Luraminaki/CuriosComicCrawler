@@ -5,12 +5,14 @@ import re
 from typing import TYPE_CHECKING, get_args
 
 import pytest
+import requests
 
-from curios_comic_crawler import model_registry
+from curios_comic_crawler import _http, model_registry
 from curios_comic_crawler.models import ModelName, ModelSpec
 
 if TYPE_CHECKING:
     import pathlib
+    from collections.abc import Iterator
 
 
 class _FakeStreamResponse:
@@ -76,9 +78,7 @@ def test_ensure_model_downloads_and_verifies_when_missing(
         sha256=hashlib.sha256(content).hexdigest(),
     )
     monkeypatch.setitem(model_registry.MODEL_MANIFEST, ("edsr", 99), spec)
-    monkeypatch.setattr(
-        model_registry.requests, "get", lambda *_a, **_k: _FakeStreamResponse(content)
-    )
+    monkeypatch.setattr(_http.requests, "get", lambda *_a, **_k: _FakeStreamResponse(content))
 
     result = model_registry.ensure_model(tmp_path, "edsr", 99)
 
@@ -101,7 +101,7 @@ def test_ensure_model_raises_and_cleans_up_on_hash_mismatch(
     )
     monkeypatch.setitem(model_registry.MODEL_MANIFEST, ("edsr", 98), spec)
     monkeypatch.setattr(
-        model_registry.requests,
+        _http.requests,
         "get",
         lambda *_a, **_k: _FakeStreamResponse(b"not matching content"),
     )
@@ -109,8 +109,7 @@ def test_ensure_model_raises_and_cleans_up_on_hash_mismatch(
     with pytest.raises(ValueError, match="integrity check"):
         model_registry.ensure_model(tmp_path, "edsr", 98)
 
-    assert not (tmp_path / "BAD_x98.pb").exists()
-    assert not (tmp_path / "BAD_x98.pb.part").exists()
+    assert list(tmp_path.iterdir()) == []  # neither the model nor a temporary file
 
 
 def test_ensure_model_redownloads_corrupted_cache(
@@ -129,9 +128,7 @@ def test_ensure_model_redownloads_corrupted_cache(
     )
     monkeypatch.setitem(model_registry.MODEL_MANIFEST, ("edsr", 97), spec)
     (tmp_path / "CACHE_x97.pb").write_bytes(b"corrupted")
-    monkeypatch.setattr(
-        model_registry.requests, "get", lambda *_a, **_k: _FakeStreamResponse(good_content)
-    )
+    monkeypatch.setattr(_http.requests, "get", lambda *_a, **_k: _FakeStreamResponse(good_content))
 
     result = model_registry.ensure_model(tmp_path, "edsr", 97)
 
@@ -159,6 +156,24 @@ def test_ensure_model_reuses_valid_cache_without_network(
     def _fail(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("network should not be used for a valid cached file")
 
-    monkeypatch.setattr(model_registry.requests, "get", _fail)
+    monkeypatch.setattr(_http.requests, "get", _fail)
 
     assert model_registry.ensure_model(tmp_path, "edsr", 96) == target
+
+
+def test_interrupted_download_leaves_no_temporary_file(
+    tmp_path: "pathlib.Path", monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A connection dropped mid-download leaves nothing behind (it used to leave `.part`)."""
+
+    class _DroppingResponse(_FakeStreamResponse):
+        def iter_content(self, chunk_size: int) -> "Iterator[bytes]":
+            del chunk_size
+            yield b"partial"
+            raise requests.ConnectionError("dropped")
+
+    monkeypatch.setattr(_http.requests, "get", lambda *_a, **_k: _DroppingResponse(b""))
+
+    with pytest.raises(requests.ConnectionError):
+        _http.download_verified("https://x/m.pb", tmp_path / "m.pb", "0" * 64)
+    assert list(tmp_path.iterdir()) == []

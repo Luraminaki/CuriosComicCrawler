@@ -36,7 +36,8 @@ dev = ["ruff>=0.8", "basedpyright>=1.40", "pytest>=8.0", "pylint>=3.3", "radon>=
 # sr_engine_onnx.py's assets/ from the official PyTorch weights. Not needed to use the
 # package -- onnxruntime (a base dependency) is all that's needed to run the already-converted,
 # already-bundled model.
-convert = ["torch>=2.0", "onnx>=1.14"]
+# torch 2.5: first version whose `torch.onnx.export` takes `dynamo=` (used by the converter).
+convert = ["torch>=2.5", "onnx>=1.14"]
 
 [project.scripts]
 comiccrawler = "curios_comic_crawler.cli_launcher:cli"
@@ -91,6 +92,11 @@ reportUnknownVariableType = "none"
 # `typing.override` only exists from Python 3.12; the package supports 3.11.
 reportImplicitOverride = "none"
 
+[[tool.basedpyright.executionEnvironments]]
+root = "tools"
+# Standalone scripts (`python tools/convert_onnx_model.py`): their own folder is on sys.path.
+reportImplicitRelativeImport = "none"
+
 [tool.pylint.main]
 # OpenCV and ONNX Runtime are C extensions: let pylint load them to see their members.
 extension-pkg-allow-list = ["cv2", "onnxruntime"]
@@ -103,6 +109,8 @@ generated-members = ["cv2.*"]
 
 [tool.pylint.format]
 max-line-length = 100
+# Like ruff: a line long only because of a URL is fine (splitting a URL hurts more).
+ignore-long-lines = '^\s*(# )?<?https?://\S+>?$|^\s*\w+="https?://\S+",?$'
 
 [tool.pylint.similarities]
 min-similarity-lines = 8
