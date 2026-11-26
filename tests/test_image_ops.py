@@ -1,9 +1,14 @@
 """Tests for `curios_comic_crawler.image_ops`."""
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 
 from curios_comic_crawler.image_ops import area_posterise, sharpen_image
+
+if TYPE_CHECKING:
+    from curios_comic_crawler.models import PosteriseMethod
 
 
 def _gradient_image(height: int = 16, width: int = 16) -> np.ndarray:
@@ -77,3 +82,35 @@ def test_sharpen_image_preserves_shape_and_dtype() -> None:
 
     assert result.shape == image.shape
     assert result.dtype == image.dtype
+
+
+@pytest.mark.parametrize("method", ["histogram", "kmeans"])
+def test_both_methods_reduce_to_the_requested_levels(method: "PosteriseMethod") -> None:
+    """Each method keeps shape and dtype and uses at most the requested gray levels."""
+    data = _gradient_image()
+
+    result = area_posterise(data, nbr_cluster=4, method=method)
+
+    assert result.shape == data.shape
+    assert result.dtype == np.uint8
+    assert np.unique(result).size <= 4
+
+
+def test_methods_agree_on_a_clear_cut_image() -> None:
+    """Two well-separated tones: both methods find the same two levels."""
+    data = np.array([[10] * 50 + [200] * 50] * 4, dtype=np.uint8)
+    data[0, 0], data[0, 99] = 12, 198  # a little noise so there is something to reduce
+
+    histogram = area_posterise(data, nbr_cluster=2, method="histogram")
+    kmeans = area_posterise(data, nbr_cluster=2, method="kmeans")
+
+    assert np.array_equal(histogram, kmeans)
+
+
+def test_levels_are_rounded_not_truncated() -> None:
+    """A level averaging 254.5+ becomes 255 (casting used to truncate it to 254)."""
+    data = np.array([0] * 10 + [254, 255, 255, 255], dtype=np.uint8)
+
+    result = area_posterise(data, nbr_cluster=2, method="histogram")
+
+    assert int(result.max()) == 255

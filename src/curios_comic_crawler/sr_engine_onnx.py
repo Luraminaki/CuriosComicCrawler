@@ -12,8 +12,14 @@ install extra, no external hosting or sha256-pinning needed for it.
 import pathlib
 from typing import TYPE_CHECKING, NamedTuple
 
+import cv2
 import numpy as np
 import onnxruntime
+from onnxruntime.capi.onnxruntime_pybind11_state import (
+    Fail,
+    InvalidArgument,
+    RuntimeException,
+)
 
 from curios_comic_crawler._worker_threads import threads_per_worker
 
@@ -29,6 +35,10 @@ _MODEL_FILENAMES: dict["OnnxModelName", str] = {
     "realesr-general-x4v3": "realesr-general-x4v3.onnx",
     "realesrgan-x4plus": "realesrgan-x4plus.onnx",
 }
+
+
+# ONNX Runtime's own errors derive from `Exception` directly, not `RuntimeError`.
+_ORT_ERRORS = (Fail, InvalidArgument, RuntimeException)
 
 
 class OnnxEngineInit(NamedTuple):
@@ -52,8 +62,11 @@ class OnnxEngine:
         """
         session_options = onnxruntime.SessionOptions()
         session_options.intra_op_num_threads = threads_per_worker(worker_count)
+        # The CPU memory arena keeps every buffer it ever allocated for reuse: on full-page
+        # inputs it held ~40% more memory than the page needs (measured, see README).
+        session_options.enable_cpu_mem_arena = False
 
-        self._session = onnxruntime.InferenceSession(
+        self._session: onnxruntime.InferenceSession = onnxruntime.InferenceSession(
             str(engine_init.model_path),
             sess_options=session_options,
             providers=["CPUExecutionProvider"],
@@ -62,19 +75,31 @@ class OnnxEngine:
     def upscale(self, image: np.ndarray) -> np.ndarray:
         """Upscale `image` (BGR, as read by `cv2.imread`) with the loaded model.
 
-        Follows Real-ESRGAN's own pre/post-processing convention: BGR -> RGB, HWC `uint8`
-        `[0, 255]` -> CHW `float32` `[0, 1]` with a batch dimension for input, and the reverse
-        for output.
+        Follows Real-ESRGAN's convention: the model takes RGB `float32` in `[0, 1]`, as a
+        `(1, 3, H, W)` tensor, and returns the same layout. Conversions are done in place
+        where possible: on a full page, each extra copy is hundreds of megabytes.
+
+        Args:
+            image (np.ndarray): `uint8` BGR image, `(H, W, 3)`.
+
+        Returns:
+            np.ndarray: The upscaled `uint8` BGR image.
+
+        Raises:
+            RuntimeError: If ONNX Runtime fails (e.g. out of memory).
         """
-        rgb = image[:, :, ::-1].astype(np.float32) / 255.0
-        tensor = np.ascontiguousarray(np.transpose(rgb, (2, 0, 1))[np.newaxis, ...])
+        tensor = cv2.dnn.blobFromImage(image, scalefactor=1 / 255.0, swapRB=True)
+        try:
+            (output,) = self._session.run(None, {"input": tensor})
+        except _ORT_ERRORS as error:  # failure inside the runtime: a page-level RuntimeError
+            raise RuntimeError(f"ONNX Runtime failed to upscale the image: {error}") from error
 
-        (output,) = self._session.run(None, {"input": tensor})
-
-        result = np.clip(output[0], 0.0, 1.0)  # pyright: ignore[reportIndexIssue]
-        result = np.transpose(result, (1, 2, 0))
-        result = (result * 255.0).round().astype(np.uint8)
-        return np.ascontiguousarray(result[:, :, ::-1])
+        planes = output[0]  # (3, H, W) float32, RGB  # pyright: ignore[reportIndexIssue]
+        _ = np.multiply(planes, 255.0, out=planes)
+        _ = np.clip(planes, 0.0, 255.0, out=planes)
+        _ = np.rint(planes, out=planes)
+        rgb = planes.transpose(1, 2, 0).astype(np.uint8)
+        return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
 
 def prepare(upscaler_config: "OnnxUpscaleConfig") -> OnnxEngineInit:

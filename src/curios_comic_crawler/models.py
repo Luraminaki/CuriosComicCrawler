@@ -14,6 +14,10 @@ OnnxModelName = Literal[
     "realesrgan-x4plus",
 ]
 
+# How `area_posterise` finds its gray levels: k-means on the 256-value histogram (fast), or
+# OpenCV's k-means on every pixel.
+PosteriseMethod = Literal["histogram", "kmeans"]
+
 
 class ModelSpec(BaseModel):
     """A single downloadable OpenCV super-resolution model.

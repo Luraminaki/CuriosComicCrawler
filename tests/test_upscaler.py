@@ -6,7 +6,10 @@ them; a real super-resolution model actually producing correct pixels is still o
 manual end-to-end runs.
 """
 
+import logging
 import pathlib
+import queue
+import signal
 
 import cv2
 import numpy as np
@@ -55,25 +58,23 @@ def test_select_remaining_handles_a_gap_in_completed() -> None:
 
 def test_resolve_worker_count_caps_at_cpu_count(monkeypatch: pytest.MonkeyPatch) -> None:
     """Never more workers than CPUs."""
-    monkeypatch.setattr(upscaler.os, "cpu_count", lambda: 4)
+    monkeypatch.setattr(upscaler, "available_cpus", lambda: 4)
 
     assert upscaler._resolve_worker_count(500, remaining_count=500) == 4
 
 
 def test_resolve_worker_count_caps_at_remaining_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     """Never more workers than pages left."""
-    monkeypatch.setattr(upscaler.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(upscaler, "available_cpus", lambda: 8)
 
     assert upscaler._resolve_worker_count(8, remaining_count=3) == 3
 
 
-def test_resolve_worker_count_defaults_to_cpu_count_when_unconfigured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Without a configured count, one worker per CPU."""
-    monkeypatch.setattr(upscaler.os, "cpu_count", lambda: 6)
+def test_resolve_worker_count_defaults_to_one_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without a configured count, one worker (one per CPU needed ~30 GB on 24 CPUs)."""
+    monkeypatch.setattr(upscaler, "available_cpus", lambda: 24)
 
-    assert upscaler._resolve_worker_count(None, remaining_count=100) == 6
+    assert upscaler._resolve_worker_count(None, remaining_count=100) == 1
 
 
 def test_format_duration_formats_days_hours_minutes_seconds() -> None:
@@ -161,17 +162,38 @@ def test_process_one_raises_on_missing_or_corrupt_image(
         upscaler._process_one(bad_path, tmp_path, gray_values=4)
 
 
-def test_process_one_raises_when_imwrite_fails(
+def test_unencodable_page_fails_and_leaves_no_file(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Regression test: `cv2.imwrite`'s return value must be checked, not ignored."""
+    """A page OpenCV can't encode fails loudly, leaving neither an output nor a temp file."""
     monkeypatch.setattr(upscaler, "_worker_engine", _IdentityEngine())
     img_path = tmp_path / "page.jpg"
     _write_test_image(img_path)
-    monkeypatch.setattr(upscaler.cv2, "imwrite", lambda *_a, **_k: False)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    monkeypatch.setattr(upscaler.cv2, "imencode", lambda *_a, **_k: (False, None))
 
-    with pytest.raises(OSError, match="Failed to write upscaled image"):
-        upscaler._process_one(img_path, tmp_path, gray_values=4)
+    with pytest.raises(ValueError, match="can't encode"):
+        upscaler._process_one(img_path, out_dir, gray_values=4)
+    assert list(out_dir.iterdir()) == []
+
+
+def test_failed_write_never_leaves_a_truncated_page(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If writing fails midway, the final page doesn't exist (it would be skipped forever)."""
+    out_path = tmp_path / "page.jpg"
+
+    def fail_after_partial_write(self: pathlib.Path, data: bytes) -> int:
+        _ = pathlib.Path.write_text(self, "partial", encoding="utf-8")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pathlib.Path, "write_bytes", fail_after_partial_write)
+    image = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    with pytest.raises(OSError, match="disk full"):
+        upscaler._write_atomically(out_path, image)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_init_worker_sets_engine_and_caps_cv2_threads(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,9 +206,14 @@ def test_init_worker_sets_engine_and_caps_cv2_threads(monkeypatch: pytest.Monkey
     )
 
     try:
-        upscaler._init_worker(engine_init=object(), worker_count=2)
+        upscaler._init_worker(
+            engine_init=object(), worker_count=2, log_queue=queue.SimpleQueue(), level=20
+        )
 
         assert captured["n"] == 3
         assert isinstance(upscaler._worker_engine, _IdentityEngine)
+        assert signal.getsignal(signal.SIGINT) is signal.SIG_IGN  # Ctrl+C is the main's job
     finally:
         upscaler._worker_engine = None
+        _ = signal.signal(signal.SIGINT, signal.default_int_handler)
+        logging.getLogger().handlers.clear()

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from curios_comic_crawler.model_registry import MODEL_MANIFEST
-from curios_comic_crawler.models import ModelName, OnnxModelName
+from curios_comic_crawler.models import ModelName, OnnxModelName, PosteriseMethod
 
 if TYPE_CHECKING:
     from pydantic import ValidationInfo
@@ -99,10 +99,14 @@ class AppConfig(BaseModel):
         upscaler: Which super-resolution engine/model to upscale with -- either
             `OpenCVUpscaleConfig` (`engine: "opencv"`) or `OnnxUpscaleConfig` (`engine: "onnx"`).
         gray_values: Number of posterisation clusters `area_posterise` reduces each image to.
+        posterise_method: How the gray levels are found: `"histogram"` (k-means on the 256-value
+            histogram, the default: fast and light) or `"kmeans"` (OpenCV's k-means on every
+            pixel, ~2.6 s and ~190 MB more per page). Both give visually identical results.
         headers: HTTP headers sent with every download request.
         upscale_workers: Number of pages to upscale in parallel, each in its own process (every
             worker loads its own copy of the model, so this trades RAM for throughput). `None`
-            (the default) uses one worker per CPU core.
+            (the default) uses one worker, which already uses every CPU; capped at the
+            available CPUs.
     """
 
     root_site: str
@@ -117,6 +121,7 @@ class AppConfig(BaseModel):
     folder_models: str
     upscaler: UpscaleConfig
     gray_values: int = Field(ge=2, le=255)
+    posterise_method: PosteriseMethod = "histogram"
     headers: dict[str, str]
     upscale_workers: int | None = Field(default=None, ge=1)
 

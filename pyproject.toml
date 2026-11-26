@@ -82,6 +82,7 @@ typeCheckingMode = "recommended"
 reportAny = "none"
 reportExplicitAny = "none"
 reportMissingTypeArgument = "none"
+reportMissingTypeStubs = "none"  # onnxruntime ships no stubs
 reportUnknownArgumentType = "none"
 reportUnknownLambdaType = "none"
 reportUnknownMemberType = "none"
@@ -91,10 +92,14 @@ reportUnknownVariableType = "none"
 reportImplicitOverride = "none"
 
 [tool.pylint.main]
-# OpenCV is a C extension: let pylint load it to see its members.
-extension-pkg-allow-list = ["cv2"]
+# OpenCV and ONNX Runtime are C extensions: let pylint load them to see their members.
+extension-pkg-allow-list = ["cv2", "onnxruntime"]
 # Only the `convert` extra (tools/) needs them; they aren't installed for normal use.
 ignored-modules = ["torch", "onnx"]
+
+[tool.pylint.typecheck]
+# OpenCV's members are generated at import; pylint can't list them even with the allow-list.
+generated-members = ["cv2.*"]
 
 [tool.pylint.format]
 max-line-length = 100
