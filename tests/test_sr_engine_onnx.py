@@ -88,6 +88,9 @@ class _FixedOutputSession:
     def run(self, *_args: object) -> list[np.ndarray]:
         """Return the fixed output.
 
+        Args:
+            *_args: The output names and input feed (ignored).
+
         Returns:
             A one-element list, like ONNX Runtime.
         """

@@ -26,159 +26,131 @@ _FSRCNN_BASE = "https://raw.githubusercontent.com/Saafke/FSRCNN_Tensorflow/maste
 _LAPSRN_BASE = "https://raw.githubusercontent.com/fannymonori/TF-LapSRN/master/export"
 
 
-# One row of the manifest table below: positional on purpose, so each entry reads as a row.
-def _spec(  # noqa: PLR0913, PLR0917  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    name: "ModelName",
-    scale: int,
-    filename: str,
-    url: str,
-    algorithm: str,
-    sha256: str,
-) -> ModelSpec:
-    """Build one manifest entry.
-
-    Args:
-        name (ModelName): Model name, as used in the config.
-        scale (int): Upscale factor.
-        filename (str): File name in the models folder.
-        url (str): Download URL.
-        algorithm (str): OpenCV `dnn_superres` algorithm name.
-        sha256 (str): Expected SHA-256 of the file.
-
-    Returns:
-        ModelSpec: The entry.
-    """
-    return ModelSpec(
-        name=name,
-        scale=scale,
-        filename=filename,
-        url=url,
-        algorithm=algorithm,  # pyright: ignore[reportArgumentType]
-        sha256=sha256,
-    )
-
-
+_SPECS = (
+    ModelSpec(
+        name="edsr",
+        scale=2,
+        filename="EDSR_x2.pb",
+        url=f"{_EDSR_BASE}/EDSR_x2.pb",
+        algorithm="edsr",
+        sha256="585623221baa070279a0d1e7e113a4c3faba0f318ca7fdd9a65d9afc0763d9b4",
+    ),
+    ModelSpec(
+        name="edsr",
+        scale=3,
+        filename="EDSR_x3.pb",
+        url=f"{_EDSR_BASE}/EDSR_x3.pb",
+        algorithm="edsr",
+        sha256="3baa3740fdb8ee9c52f1a41d69fa74cb9feef0fa9bfeec24f0ee58b928068e9a",
+    ),
+    ModelSpec(
+        name="edsr",
+        scale=4,
+        filename="EDSR_x4.pb",
+        url=f"{_EDSR_BASE}/EDSR_x4.pb",
+        algorithm="edsr",
+        sha256="dd35ce3cae53ecee2d16045e08a932c3e7242d641bb65cb971d123e06904347f",
+    ),
+    ModelSpec(
+        name="espcn",
+        scale=2,
+        filename="ESPCN_x2.pb",
+        url=f"{_ESPCN_BASE}/ESPCN_x2.pb",
+        algorithm="espcn",
+        sha256="59f77351e1d7c0057bf6fe088b4a8a07e42c468c8c8aebb674a6b4ea1823221d",
+    ),
+    ModelSpec(
+        name="espcn",
+        scale=3,
+        filename="ESPCN_x3.pb",
+        url=f"{_ESPCN_BASE}/ESPCN_x3.pb",
+        algorithm="espcn",
+        sha256="0e667db7a431d14c32568ed79bf21701a64df8b1d162e48ca1f8800affe2c2b3",
+    ),
+    ModelSpec(
+        name="espcn",
+        scale=4,
+        filename="ESPCN_x4.pb",
+        url=f"{_ESPCN_BASE}/ESPCN_x4.pb",
+        algorithm="espcn",
+        sha256="e403f06309229cf36009cd8fb0da032ba7643fae9f15cf94fe562e8edf8fef47",
+    ),
+    ModelSpec(
+        name="fsrcnn",
+        scale=2,
+        filename="FSRCNN_x2.pb",
+        url=f"{_FSRCNN_BASE}/FSRCNN_x2.pb",
+        algorithm="fsrcnn",
+        sha256="366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c",
+    ),
+    ModelSpec(
+        name="fsrcnn",
+        scale=3,
+        filename="FSRCNN_x3.pb",
+        url=f"{_FSRCNN_BASE}/FSRCNN_x3.pb",
+        algorithm="fsrcnn",
+        sha256="efd38655a815908c6c8954db6052f128e76a735f1de657894c477d0dc0b64481",
+    ),
+    ModelSpec(
+        name="fsrcnn",
+        scale=4,
+        filename="FSRCNN_x4.pb",
+        url=f"{_FSRCNN_BASE}/FSRCNN_x4.pb",
+        algorithm="fsrcnn",
+        sha256="5c68d18db561aed8ead4ffedf1b897ea615baaf60ebf6c35f8e641f8fa4a21bf",
+    ),
+    ModelSpec(
+        name="fsrcnn-small",
+        scale=2,
+        filename="FSRCNN-small_x2.pb",
+        url=f"{_FSRCNN_BASE}/FSRCNN-small_x2.pb",
+        algorithm="fsrcnn",
+        sha256="429e4793d049c1ae16ddbbc322fd11c3c08831c0c20137390b4d098976a2b0d9",
+    ),
+    ModelSpec(
+        name="fsrcnn-small",
+        scale=3,
+        filename="FSRCNN-small_x3.pb",
+        url=f"{_FSRCNN_BASE}/FSRCNN-small_x3.pb",
+        algorithm="fsrcnn",
+        sha256="58e72d0c4231b8e754180e787d7348f45ae6230ee3c5af7dc12b558467f593f7",
+    ),
+    ModelSpec(
+        name="fsrcnn-small",
+        scale=4,
+        filename="FSRCNN-small_x4.pb",
+        url=f"{_FSRCNN_BASE}/FSRCNN-small_x4.pb",
+        algorithm="fsrcnn",
+        sha256="92a9f57c28494813b4dc073b51a300cb909401454d77541bcdc96b4d55901d02",
+    ),
+    ModelSpec(
+        name="lapsrn",
+        scale=2,
+        filename="LapSRN_x2.pb",
+        url=f"{_LAPSRN_BASE}/LapSRN_x2.pb",
+        algorithm="lapsrn",
+        sha256="f59c86e6835bbca646dbd81588f07820dfe3bd09e3702976ae2d90b5fc0f0b21",
+    ),
+    ModelSpec(
+        name="lapsrn",
+        scale=4,
+        filename="LapSRN_x4.pb",
+        url=f"{_LAPSRN_BASE}/LapSRN_x4.pb",
+        algorithm="lapsrn",
+        sha256="d3e95c93cafae5ce5a8ed57ce9abf07f2de58da8c5d6d656b766774969835ee2",
+    ),
+    ModelSpec(
+        name="lapsrn",
+        scale=8,
+        filename="LapSRN_x8.pb",
+        url=f"{_LAPSRN_BASE}/LapSRN_x8.pb",
+        algorithm="lapsrn",
+        sha256="a00211938b2b4c7d23691525a9267d9d0bbb345cdb9f38a7fc917414a5a1884f",
+    ),
+)
+# Keyed by (name, scale), the pair a config names a model by.
 MODEL_MANIFEST: dict[tuple["ModelName", int], ModelSpec] = {
-    ("edsr", 2): _spec(
-        "edsr",
-        2,
-        "EDSR_x2.pb",
-        f"{_EDSR_BASE}/EDSR_x2.pb",
-        "edsr",
-        "585623221baa070279a0d1e7e113a4c3faba0f318ca7fdd9a65d9afc0763d9b4",
-    ),
-    ("edsr", 3): _spec(
-        "edsr",
-        3,
-        "EDSR_x3.pb",
-        f"{_EDSR_BASE}/EDSR_x3.pb",
-        "edsr",
-        "3baa3740fdb8ee9c52f1a41d69fa74cb9feef0fa9bfeec24f0ee58b928068e9a",
-    ),
-    ("edsr", 4): _spec(
-        "edsr",
-        4,
-        "EDSR_x4.pb",
-        f"{_EDSR_BASE}/EDSR_x4.pb",
-        "edsr",
-        "dd35ce3cae53ecee2d16045e08a932c3e7242d641bb65cb971d123e06904347f",
-    ),
-    ("espcn", 2): _spec(
-        "espcn",
-        2,
-        "ESPCN_x2.pb",
-        f"{_ESPCN_BASE}/ESPCN_x2.pb",
-        "espcn",
-        "59f77351e1d7c0057bf6fe088b4a8a07e42c468c8c8aebb674a6b4ea1823221d",
-    ),
-    ("espcn", 3): _spec(
-        "espcn",
-        3,
-        "ESPCN_x3.pb",
-        f"{_ESPCN_BASE}/ESPCN_x3.pb",
-        "espcn",
-        "0e667db7a431d14c32568ed79bf21701a64df8b1d162e48ca1f8800affe2c2b3",
-    ),
-    ("espcn", 4): _spec(
-        "espcn",
-        4,
-        "ESPCN_x4.pb",
-        f"{_ESPCN_BASE}/ESPCN_x4.pb",
-        "espcn",
-        "e403f06309229cf36009cd8fb0da032ba7643fae9f15cf94fe562e8edf8fef47",
-    ),
-    ("fsrcnn", 2): _spec(
-        "fsrcnn",
-        2,
-        "FSRCNN_x2.pb",
-        f"{_FSRCNN_BASE}/FSRCNN_x2.pb",
-        "fsrcnn",
-        "366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c",
-    ),
-    ("fsrcnn", 3): _spec(
-        "fsrcnn",
-        3,
-        "FSRCNN_x3.pb",
-        f"{_FSRCNN_BASE}/FSRCNN_x3.pb",
-        "fsrcnn",
-        "efd38655a815908c6c8954db6052f128e76a735f1de657894c477d0dc0b64481",
-    ),
-    ("fsrcnn", 4): _spec(
-        "fsrcnn",
-        4,
-        "FSRCNN_x4.pb",
-        f"{_FSRCNN_BASE}/FSRCNN_x4.pb",
-        "fsrcnn",
-        "5c68d18db561aed8ead4ffedf1b897ea615baaf60ebf6c35f8e641f8fa4a21bf",
-    ),
-    ("fsrcnn-small", 2): _spec(
-        "fsrcnn-small",
-        2,
-        "FSRCNN-small_x2.pb",
-        f"{_FSRCNN_BASE}/FSRCNN-small_x2.pb",
-        "fsrcnn",
-        "429e4793d049c1ae16ddbbc322fd11c3c08831c0c20137390b4d098976a2b0d9",
-    ),
-    ("fsrcnn-small", 3): _spec(
-        "fsrcnn-small",
-        3,
-        "FSRCNN-small_x3.pb",
-        f"{_FSRCNN_BASE}/FSRCNN-small_x3.pb",
-        "fsrcnn",
-        "58e72d0c4231b8e754180e787d7348f45ae6230ee3c5af7dc12b558467f593f7",
-    ),
-    ("fsrcnn-small", 4): _spec(
-        "fsrcnn-small",
-        4,
-        "FSRCNN-small_x4.pb",
-        f"{_FSRCNN_BASE}/FSRCNN-small_x4.pb",
-        "fsrcnn",
-        "92a9f57c28494813b4dc073b51a300cb909401454d77541bcdc96b4d55901d02",
-    ),
-    ("lapsrn", 2): _spec(
-        "lapsrn",
-        2,
-        "LapSRN_x2.pb",
-        f"{_LAPSRN_BASE}/LapSRN_x2.pb",
-        "lapsrn",
-        "f59c86e6835bbca646dbd81588f07820dfe3bd09e3702976ae2d90b5fc0f0b21",
-    ),
-    ("lapsrn", 4): _spec(
-        "lapsrn",
-        4,
-        "LapSRN_x4.pb",
-        f"{_LAPSRN_BASE}/LapSRN_x4.pb",
-        "lapsrn",
-        "d3e95c93cafae5ce5a8ed57ce9abf07f2de58da8c5d6d656b766774969835ee2",
-    ),
-    ("lapsrn", 8): _spec(
-        "lapsrn",
-        8,
-        "LapSRN_x8.pb",
-        f"{_LAPSRN_BASE}/LapSRN_x8.pb",
-        "lapsrn",
-        "a00211938b2b4c7d23691525a9267d9d0bbb345cdb9f38a7fc917414a5a1884f",
-    ),
+    (spec.name, spec.scale): spec for spec in _SPECS
 }
 
 

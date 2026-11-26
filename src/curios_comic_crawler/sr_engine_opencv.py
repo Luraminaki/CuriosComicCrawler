@@ -46,7 +46,14 @@ class OpenCVEngine:
         self._sup_res = sup_res
 
     def upscale(self, image: "np.ndarray") -> "np.ndarray":
-        """Upscale `image` with the loaded model."""
+        """Upscale `image` with the loaded model.
+
+        Args:
+            image (np.ndarray): `uint8` BGR image.
+
+        Returns:
+            np.ndarray: The upscaled `uint8` BGR image.
+        """
         return self._sup_res.upsample(image)
 
 

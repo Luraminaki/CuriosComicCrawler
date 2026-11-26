@@ -49,6 +49,9 @@ class _ScriptedExecutor:
     def __call__(self, **_pool_options: object) -> "_ScriptedExecutor":
         """Be "constructed" by `run` in place of the real pool class.
 
+        Args:
+            **_pool_options: The pool's options (ignored).
+
         Returns:
             This executor.
         """
@@ -65,6 +68,9 @@ class _ScriptedExecutor:
     def __exit__(self, *_exc_info: object) -> bool:
         """Leave the `with` block like the real pool: wait, without cancelling.
 
+        Args:
+            *_exc_info: The exception in flight, if any (ignored).
+
         Returns:
             False.
         """
@@ -75,6 +81,11 @@ class _ScriptedExecutor:
         self, _function: "Callable[..., tuple[str, float]]", page: "pathlib.Path", *args: object
     ) -> "Future[tuple[str, float]]":
         """Return the page's future, settled as scripted.
+
+        Args:
+            _function: The worker function (never run).
+            page: The page to process.
+            *args: The function's other arguments (recorded).
 
         Returns:
             The future.
@@ -107,6 +118,9 @@ class _ScriptedExecutor:
 @pytest.fixture(name="pages")
 def fixture_pages(config: "AppConfig") -> "AppConfig":
     """Three downloaded pages in `config.dl_dir`.
+
+    Args:
+        config: The config whose download folder gets the pages.
 
     Returns:
         The config they belong to.
@@ -177,6 +191,9 @@ def test_ctrl_c_returns_130_and_reports_written_and_cancelled(
 
     def interrupted(*_args: object) -> None:
         """Be interrupted while waiting for the pages.
+
+        Args:
+            *_args: `_collect`'s arguments (ignored).
 
         Raises:
             KeyboardInterrupt: Always.

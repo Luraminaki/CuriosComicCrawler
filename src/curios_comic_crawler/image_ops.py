@@ -169,7 +169,16 @@ def area_posterise(
 
 
 def _unsharp_pass(image: np.ndarray, ksize: int, sigma: float) -> np.ndarray:
-    """Run one unsharp-mask pass: blur, then push the original away from the blur."""
+    """Run one unsharp-mask pass: blur, then push the original away from the blur.
+
+    Args:
+        image (np.ndarray): The image.
+        ksize (int): Gaussian kernel size (odd).
+        sigma (float): Gaussian standard deviation.
+
+    Returns:
+        np.ndarray: The sharpened image.
+    """
     blur = cv2.GaussianBlur(image, (ksize, ksize), sigma)
     return cv2.addWeighted(image, 1.5, blur, -0.5, 0)
 

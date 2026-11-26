@@ -17,6 +17,10 @@ def fixture_topology(
 ) -> "Iterator[pathlib.Path]":
     """A fake `/sys/devices/system/cpu`: 4 logical CPUs, 2 per core, all usable.
 
+    Args:
+        tmp_path: Holds the fake folder.
+        monkeypatch: Points the module at it, and fakes the CPU affinity.
+
     Yields:
         The fake folder (tests may break it).
     """

@@ -29,7 +29,15 @@ _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 
 def _page_prefix(config: "AppConfig", page: int) -> str:
-    """The `bd_name` + zero-padded page number segment shared by every filename variant."""
+    """Build the `bd_name` + zero-padded page number segment shared by every filename variant.
+
+    Args:
+        config (AppConfig): Application configuration.
+        page (int): Page number.
+
+    Returns:
+        str: E.g. `SA_0042`.
+    """
     return f"{config.bd_name}_{str(page).zfill(config.padded)}"
 
 
@@ -48,11 +56,17 @@ def _page_image_names(config: "AppConfig", page: int) -> list[str]:
 
 
 def _page_stem_pattern(config: "AppConfig") -> "Pattern[str]":
-    """Regex matching a saved page's filename stem, capturing its page number.
+    """Build the regex matching a saved page's filename stem, capturing its page number.
 
     Mirrors `_page_prefix`'s `bd_name_<digits>` segment followed by one of
     `config.filename_variants`, anchored on the exact `bd_name` so it can't misparse a page
     number out of a `bd_name` that itself contains an underscore.
+
+    Args:
+        config (AppConfig): Application configuration.
+
+    Returns:
+        Pattern[str]: The compiled pattern; group 1 is the page number.
     """
     variants = "|".join(re.escape(variant) for variant in config.filename_variants)
     return re.compile(rf"^{re.escape(config.bd_name)}_(\d+)_(?:{variants})$")

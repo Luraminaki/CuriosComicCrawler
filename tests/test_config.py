@@ -27,7 +27,7 @@ def test_missing_required_field_is_rejected(valid_config_dict: dict) -> None:
     """A config without `root_site` is refused."""
     del valid_config_dict["root_site"]
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="root_site"):
         _ = AppConfig.model_validate(valid_config_dict)
 
 
@@ -47,7 +47,7 @@ def test_root_site_must_be_http_with_trailing_slash(
     """`root_site` must be an http(s) URL ending with a slash."""
     valid_config_dict["root_site"] = bad_root_site
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="root_site"):
         _ = AppConfig.model_validate(valid_config_dict)
 
 
@@ -58,7 +58,7 @@ def test_bd_name_rejects_path_segments_and_reserved_names(
     """`BD_name` can't hold a path segment or a Windows reserved name."""
     valid_config_dict["BD_name"] = bad_bd_name
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="BD_name"):
         _ = AppConfig.model_validate(valid_config_dict)
 
 
@@ -66,7 +66,7 @@ def test_filename_variants_requires_at_least_one_entry(valid_config_dict: dict) 
     """At least one filename variant is required."""
     valid_config_dict["filename_variants"] = []
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="filename_variants"):
         _ = AppConfig.model_validate(valid_config_dict)
 
 
@@ -106,7 +106,7 @@ def test_unknown_upscaler_engine_is_rejected(valid_config_dict: dict) -> None:
     """An engine other than `onnx`/`opencv` is refused."""
     valid_config_dict["upscaler"] = {"engine": "pytorch", "model_name": "edsr", "model_scale": 3}
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="pytorch"):
         _ = AppConfig.model_validate(valid_config_dict)
 
 
@@ -115,7 +115,7 @@ def test_gray_values_out_of_bounds_is_rejected(valid_config_dict: dict, gray_val
     """`gray_values` must stay within 2-255."""
     valid_config_dict["gray_values"] = gray_values
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="gray_values"):
         _ = AppConfig.model_validate(valid_config_dict)
 
 
@@ -161,3 +161,67 @@ def test_http_and_https_root_sites_are_accepted(valid_config_dict: dict, root_si
     valid_config_dict["root_site"] = root_site
 
     assert AppConfig.model_validate(valid_config_dict).root_site == root_site
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("padded", 1),
+        ("fails", 1),
+        ("gray_values", 2),
+        ("gray_values", 255),
+        ("upscale_workers", 1),
+    ],
+)
+def test_smallest_and_largest_allowed_values_are_accepted(
+    valid_config_dict: dict, field: str, value: int
+) -> None:
+    """Each numeric setting's boundary value is valid."""
+    valid_config_dict[field] = value
+
+    assert getattr(AppConfig.model_validate(valid_config_dict), field) == value
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("padded", 0, "padded"),
+        ("fails", 0, "fails"),
+        ("upscale_workers", 0, "upscale_workers"),
+        ("ext", "jpg", "leading dot"),
+        ("folder_data", "", "folder_data must not be empty"),
+        ("folder_save_dl", "", "folder_save_dl must not be empty"),
+        ("folder_save_upscale", "", "folder_save_upscale must not be empty"),
+        ("folder_models", "", "folder_models must not be empty"),
+        ("folder_data", "a/../b", r'must not contain "\.\."'),
+        ("BD_name", ".", "single path segment"),
+        ("posterise_method", "median", "posterise_method"),
+    ],
+)
+def test_values_just_out_of_bounds_are_rejected(
+    valid_config_dict: dict, field: str, value: object, message: str
+) -> None:
+    """A value one step past what's allowed is refused, naming the problem."""
+    valid_config_dict[field] = value
+
+    with pytest.raises(ValidationError, match=message):
+        _ = AppConfig.model_validate(valid_config_dict)
+
+
+def test_load_config_rejects_invalid_json(tmp_path: pathlib.Path) -> None:
+    """A config file that isn't JSON raises a `ValueError` (`json.JSONDecodeError`)."""
+    config_path = tmp_path / "config.json"
+    _ = config_path.write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Expecting property name"):
+        _ = load_config(config_path)
+
+
+def test_load_config_expands_the_home_folder(
+    tmp_path: pathlib.Path, valid_config_dict: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A path starting with `~` is read from the user's home folder."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _ = (tmp_path / "config.json").write_text(json.dumps(valid_config_dict), encoding="utf-8")
+
+    assert load_config("~/config.json").bd_name == "SA"

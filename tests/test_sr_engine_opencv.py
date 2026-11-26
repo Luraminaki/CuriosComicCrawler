@@ -44,6 +44,11 @@ def test_prepare_passes_models_dir_and_config_through_to_ensure_model(
     ) -> "pathlib.Path":
         """Record the arguments instead of downloading.
 
+        Args:
+            models_dir: Where the model would be stored.
+            model_name: The model family.
+            model_scale: Its scale.
+
         Returns:
             A fixed model path.
         """

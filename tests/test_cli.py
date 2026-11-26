@@ -1,7 +1,6 @@
 """Tests for `curios_comic_crawler._cli.main`: every command's exit codes and config loading."""
 
 import json
-import logging
 import subprocess
 import sys
 from typing import TYPE_CHECKING
@@ -14,34 +13,38 @@ from curios_comic_crawler._exit_codes import INTERRUPTED_EXIT_CODE
 if TYPE_CHECKING:
     import argparse
     import pathlib
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
     from curios_comic_crawler.config import AppConfig
 
 
 @pytest.fixture(name="workdir", autouse=True)
 def fixture_workdir(
-    tmp_path: "pathlib.Path", monkeypatch: "pytest.MonkeyPatch"
-) -> "Iterator[pathlib.Path]":
+    tmp_path: "pathlib.Path", monkeypatch: "pytest.MonkeyPatch", restore_root_logger: None
+) -> "pathlib.Path":
     """Run in `tmp_path` (where `main` writes its log), restoring the root logger afterwards.
 
-    Yields:
+    Args:
+        tmp_path: The test's own folder.
+        monkeypatch: Changes the working directory and `sys.argv`.
+        restore_root_logger: Undoes `main`'s logging setup (its log file handler) afterwards.
+
+    Returns:
         The working directory.
     """
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", ["comiccrawler-test"])
-    root = logging.getLogger()
-    handlers, level = root.handlers[:], root.level
-    yield tmp_path
-    for handler in root.handlers:
-        if handler not in handlers:
-            handler.close()  # main's log file handler
-    root.handlers, root.level = handlers, level
+    del restore_root_logger  # requested for its teardown only
+    return tmp_path
 
 
 @pytest.fixture(name="config_file")
 def fixture_config_file(workdir: "pathlib.Path", valid_config_dict: dict) -> "pathlib.Path":
     """A valid `config.json` in the working directory (the default location).
+
+    Args:
+        workdir: The working directory.
+        valid_config_dict: The config to write.
 
     Returns:
         Its path.
@@ -75,6 +78,10 @@ def _raising(error: BaseException) -> "Callable[[AppConfig, argparse.Namespace],
 
     def run(_config: "AppConfig", _args: "argparse.Namespace") -> int:
         """Raise the error.
+
+        Args:
+            _config: Ignored.
+            _args: Ignored.
 
         Raises:
             BaseException: `error`.

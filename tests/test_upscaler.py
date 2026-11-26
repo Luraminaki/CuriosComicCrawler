@@ -12,6 +12,7 @@ import logging
 import multiprocessing
 import pathlib
 import signal
+from logging.handlers import QueueHandler
 from typing import TYPE_CHECKING
 
 import cv2
@@ -145,18 +146,26 @@ def test_eta_is_zero_when_nothing_remains() -> None:
 def test_process_one_writes_upscaled_page(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A page is upscaled and written to the output folder."""
+    """The written page decodes to the engine's output, posterised to `gray_values` levels.
+
+    A lossless `.png` page and a no-op sharpen keep the posterised levels countable (JPEG and
+    the unsharp mask both create in-between values).
+    """
     monkeypatch.setattr(upscaler, "_worker_engine", _IdentityEngine())
-    img_path = tmp_path / "page.jpg"
+    monkeypatch.setattr(upscaler, "sharpen_image", lambda image: image)
+    img_path = tmp_path / "page.png"
     _write_test_image(img_path)
     upscale_dir = tmp_path / "out"
     upscale_dir.mkdir()
 
     name, elapsed = upscaler._process_one(img_path, upscale_dir, gray_values=4)
 
-    assert name == "page.jpg"
+    assert name == "page.png"
     assert elapsed >= 0
-    assert (upscale_dir / "page.jpg").is_file()
+    written = cv2.imread(str(upscale_dir / "page.png"), cv2.IMREAD_COLOR)
+    assert written is not None
+    assert written.shape == (8, 8, 3)
+    assert np.unique(written).size <= 4
 
 
 def test_process_one_raises_when_engine_not_initialized(
@@ -210,6 +219,10 @@ def test_failed_write_never_leaves_a_truncated_page(
     def fail_after_partial_write(self: pathlib.Path, data: bytes) -> int:
         """Write part of the file, then fail like a full disk.
 
+        Args:
+            self: The file being written (this replaces a `pathlib.Path` method).
+            data: What should have been written (dropped).
+
         Raises:
             OSError: Always.
         """
@@ -225,14 +238,20 @@ def test_failed_write_never_leaves_a_truncated_page(
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.usefixtures("restore_root_logger")
 def test_init_worker_sets_engine_and_caps_cv2_threads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Each worker builds its engine and caps OpenCV's threads to its share."""
+    """Each worker builds its engine, caps OpenCV's threads and logs through the queue."""
     captured: dict[str, int] = {}
     monkeypatch.setattr(cv2, "setNumThreads", lambda n: captured.setdefault("n", n))
     monkeypatch.setattr(upscaler, "threads_per_worker", lambda _worker_count: 3)
     monkeypatch.setattr(
         upscaler, "build_engine", lambda _engine_init, _worker_count: _IdentityEngine()
     )
+    # The worker globals `_init_worker` sets, put back by monkeypatch after the test.
+    monkeypatch.setattr(upscaler, "_worker_engine", None)
+    # Recorded, not installed: ignoring Ctrl+C in the test process would outlive a failure.
+    handlers: dict[int, object] = {}
+    monkeypatch.setattr(signal, "signal", handlers.setdefault)
 
     log_queue: Queue[logging.LogRecord] = multiprocessing.Queue()
     try:
@@ -240,14 +259,15 @@ def test_init_worker_sets_engine_and_caps_cv2_threads(monkeypatch: pytest.Monkey
             engine_init=OpenCVEngineInit(pathlib.Path("unused.pb"), "edsr", 3),
             worker_count=2,
             log_queue=log_queue,
-            level=20,
+            level=logging.INFO,
         )
 
         assert captured["n"] == 3
         assert isinstance(upscaler._worker_engine, _IdentityEngine)
-        assert signal.getsignal(signal.SIGINT) is signal.SIG_IGN  # Ctrl+C is the main's job
+        assert handlers == {signal.SIGINT: signal.SIG_IGN}  # Ctrl+C is the main's job
+        root = logging.getLogger()
+        assert [type(handler) for handler in root.handlers] == [QueueHandler]
+        assert root.level == logging.INFO
     finally:
-        upscaler._worker_engine = None
-        _ = signal.signal(signal.SIGINT, signal.default_int_handler)
-        logging.getLogger().handlers.clear()
         log_queue.close()
+        log_queue.join_thread()
