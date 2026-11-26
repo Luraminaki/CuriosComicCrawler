@@ -25,6 +25,7 @@ _EXPECTED_SHA256: dict[OnnxModelName, str] = {
 
 
 def test_every_onnx_model_name_has_a_filename_and_expected_hash() -> None:
+    """Every ONNX model offered has a bundled file and a known checksum."""
     for model in get_args(OnnxModelName):
         assert model in sr_engine_onnx._MODEL_FILENAMES
         assert model in _EXPECTED_SHA256
@@ -32,6 +33,7 @@ def test_every_onnx_model_name_has_a_filename_and_expected_hash() -> None:
 
 @pytest.mark.parametrize("model", get_args(OnnxModelName))
 def test_bundled_model_matches_expected_hash(model: OnnxModelName) -> None:
+    """The bundled ONNX models are byte-for-byte the expected ones."""
     model_path = sr_engine_onnx._ASSETS_DIR / sr_engine_onnx._MODEL_FILENAMES[model]
     digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
 
@@ -40,6 +42,7 @@ def test_bundled_model_matches_expected_hash(model: OnnxModelName) -> None:
 
 @pytest.mark.parametrize("model", get_args(OnnxModelName))
 def test_prepare_resolves_bundled_model_path(model: OnnxModelName) -> None:
+    """Preparing the ONNX engine finds the bundled model file."""
     engine_init = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model=model))
 
     assert engine_init.model_path.is_file()
@@ -47,6 +50,7 @@ def test_prepare_resolves_bundled_model_path(model: OnnxModelName) -> None:
 
 
 def test_prepare_raises_if_asset_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing bundled model raises `FileNotFoundError`."""
     monkeypatch.setitem(
         sr_engine_onnx._MODEL_FILENAMES, "realesr-animevideov3-x4", "does-not-exist.onnx"
     )
@@ -57,6 +61,7 @@ def test_prepare_raises_if_asset_missing(monkeypatch: pytest.MonkeyPatch) -> Non
 
 @pytest.mark.parametrize("model", get_args(OnnxModelName))
 def test_build_and_upscale_produces_4x_output(model: OnnxModelName) -> None:
+    """Each bundled model upscales an image by 4 in both dimensions."""
     engine_init = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model=model))
     engine = sr_engine_onnx.build(engine_init, worker_count=1)
 

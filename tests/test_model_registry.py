@@ -31,27 +31,32 @@ class _FakeStreamResponse:
 
 
 def test_manifest_keys_match_spec_fields() -> None:
+    """Each manifest key matches its spec's model name and scale."""
     for (name, scale), spec in model_registry.MODEL_MANIFEST.items():
         assert spec.name == name
         assert spec.scale == scale
 
 
 def test_every_model_name_has_at_least_one_manifest_entry() -> None:
+    """Every OpenCV model name offered in the config can be downloaded."""
     manifest_names = {name for name, _scale in model_registry.MODEL_MANIFEST}
     assert manifest_names == set(get_args(ModelName))
 
 
 def test_manifest_filenames_are_unique() -> None:
+    """No two models share a file name in the models folder."""
     filenames = [spec.filename for spec in model_registry.MODEL_MANIFEST.values()]
     assert len(filenames) == len(set(filenames))
 
 
 def test_manifest_sha256_are_valid_hex_digests() -> None:
+    """Every manifest checksum is a 64-digit hex SHA-256."""
     for spec in model_registry.MODEL_MANIFEST.values():
         assert re.fullmatch(r"[0-9a-f]{64}", spec.sha256)
 
 
 def test_manifest_urls_are_https() -> None:
+    """Every model is fetched over HTTPS."""
     for spec in model_registry.MODEL_MANIFEST.values():
         assert spec.url.startswith("https://")
 
@@ -60,6 +65,7 @@ def test_ensure_model_downloads_and_verifies_when_missing(
     tmp_path: "pathlib.Path",
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A missing model is downloaded and its checksum verified."""
     content = b"fake model bytes"
     spec = ModelSpec(
         name="edsr",
@@ -84,6 +90,7 @@ def test_ensure_model_raises_and_cleans_up_on_hash_mismatch(
     tmp_path: "pathlib.Path",
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A download with the wrong checksum is refused and deleted."""
     spec = ModelSpec(
         name="edsr",
         scale=98,
@@ -110,6 +117,7 @@ def test_ensure_model_redownloads_corrupted_cache(
     tmp_path: "pathlib.Path",
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A cached model with the wrong checksum is downloaded again."""
     good_content = b"good bytes"
     spec = ModelSpec(
         name="edsr",
@@ -134,6 +142,7 @@ def test_ensure_model_reuses_valid_cache_without_network(
     tmp_path: "pathlib.Path",
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A cached model with the right checksum is used without any download."""
     good_content = b"good bytes"
     spec = ModelSpec(
         name="edsr",

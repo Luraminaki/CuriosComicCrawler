@@ -14,6 +14,7 @@ def _gradient_image(height: int = 16, width: int = 16) -> np.ndarray:
 
 
 def test_area_posterise_rejects_non_uint8_dtype() -> None:
+    """Only 8-bit images can be posterised."""
     data = _gradient_image().astype(np.float32)
 
     with pytest.raises(TypeError, match="uint8"):
@@ -21,6 +22,7 @@ def test_area_posterise_rejects_non_uint8_dtype() -> None:
 
 
 def test_area_posterise_rejects_out_of_range_cluster_count() -> None:
+    """A cluster count outside 2-255 leaves the image as is."""
     data = _gradient_image()
 
     assert area_posterise(data, nbr_cluster=1) is data
@@ -29,30 +31,35 @@ def test_area_posterise_rejects_out_of_range_cluster_count() -> None:
 
 
 def test_area_posterise_skips_kmeans_at_255_clusters() -> None:
+    """255 clusters change nothing: k-means isn't run."""
     data = _gradient_image()
 
     assert area_posterise(data, nbr_cluster=255) is data
 
 
 def test_area_posterise_returns_empty_input_unchanged() -> None:
+    """An empty image is returned as is."""
     data = np.empty((0,), dtype=np.uint8)
 
     assert area_posterise(data, nbr_cluster=4) is data
 
 
 def test_area_posterise_skips_when_not_enough_unique_values() -> None:
+    """Fewer distinct values than clusters: nothing to reduce."""
     data = np.array([0, 0, 255, 255], dtype=np.uint8)
 
     assert area_posterise(data, nbr_cluster=8) is data
 
 
 def test_area_posterise_skips_constant_data() -> None:
+    """A single-valued image is returned as is."""
     data = np.full((8, 8), 42, dtype=np.uint8)
 
     assert area_posterise(data, nbr_cluster=4) is data
 
 
 def test_area_posterise_reduces_to_requested_cluster_count() -> None:
+    """The result keeps shape and dtype, with at most the requested gray levels."""
     data = _gradient_image()
 
     result = area_posterise(data, nbr_cluster=4)
@@ -63,6 +70,7 @@ def test_area_posterise_reduces_to_requested_cluster_count() -> None:
 
 
 def test_sharpen_image_preserves_shape_and_dtype() -> None:
+    """Sharpening keeps the image's shape and dtype."""
     image = _gradient_image()
 
     result = sharpen_image(image)

@@ -29,10 +29,12 @@ class _FakeResponse:
 
 
 def test_get_last_saved_returns_zero_when_empty(config) -> None:
+    """With no page downloaded yet, the last saved page is 0."""
     assert downloader.get_last_saved(config) == 0
 
 
 def test_get_last_saved_finds_highest_numeric_page(config) -> None:
+    """The last saved page is the highest page number on disk."""
     for name in ("SA_0001_small.jpg", "SA_0002_small.jpg", "SA_0010_small.jpg"):
         (config.dl_dir / name).touch()
 
@@ -40,6 +42,7 @@ def test_get_last_saved_finds_highest_numeric_page(config) -> None:
 
 
 def test_get_last_saved_skips_non_numeric_stem_segment(config) -> None:
+    """Files whose page segment isn't a number are ignored."""
     (config.dl_dir / "SA_zzzz_small.jpg").touch()
     (config.dl_dir / "SA_0005_small.jpg").touch()
 
@@ -49,6 +52,7 @@ def test_get_last_saved_skips_non_numeric_stem_segment(config) -> None:
 def test_get_last_saved_handles_bd_name_with_underscore(
     make_config, tmp_path: "pathlib.Path"
 ) -> None:
+    """A comic name containing `_` doesn't shift the page segment."""
     cfg = make_config(BD_name="my_comic", folder_data=str(tmp_path / "data") + "/")
     cfg.dl_dir.mkdir(parents=True, exist_ok=True)
     (cfg.dl_dir / "my_comic_0007_small.jpg").touch()
@@ -59,6 +63,7 @@ def test_get_last_saved_handles_bd_name_with_underscore(
 def test_get_last_saved_not_fooled_by_lexicographic_order(
     make_config, tmp_path: "pathlib.Path"
 ) -> None:
+    """Page 1000 beats page 999: numbers are compared, not names."""
     cfg = make_config(padded=3, folder_data=str(tmp_path / "data") + "/")
     cfg.dl_dir.mkdir(parents=True, exist_ok=True)
     for name in ("SA_999_small.jpg", "SA_1000_small.jpg"):
@@ -70,6 +75,7 @@ def test_get_last_saved_not_fooled_by_lexicographic_order(
 def test_dl_and_save_img_saves_on_success(
     tmp_path: "pathlib.Path", monkeypatch: "pytest.MonkeyPatch"
 ) -> None:
+    """A successful response is written to the target file."""
     monkeypatch.setattr(
         downloader.requests, "get", lambda *a, **k: _FakeResponse(ok=True, content=b"hello")
     )
@@ -84,6 +90,7 @@ def test_dl_and_save_img_returns_false_on_missing_page(
     tmp_path: "pathlib.Path",
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
+    """A missing page (HTTP 404) is reported as not saved."""
     monkeypatch.setattr(
         downloader.requests, "get", lambda *a, **k: _FakeResponse(ok=False, status_code=404)
     )
@@ -97,6 +104,7 @@ def test_dl_and_save_img_returns_false_on_network_error(
     tmp_path: "pathlib.Path",
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
+    """A request that keeps failing is retried, then reported as not saved."""
     call_count = 0
 
     def _raise(*_args: object, **_kwargs: object) -> None:
@@ -116,6 +124,7 @@ def test_dl_and_save_img_recovers_after_transient_network_error(
     tmp_path: "pathlib.Path",
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
+    """One failed request followed by a success still saves the page."""
     call_count = 0
 
     def _flaky_get(*_args: object, **_kwargs: object) -> _FakeResponse:
@@ -137,6 +146,8 @@ def test_dl_and_save_img_cleans_up_partial_file_on_stream_error(
     tmp_path: "pathlib.Path",
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
+    """A download cut mid-stream leaves no partial file behind."""
+
     class _BrokenStreamResponse(_FakeResponse):
         def iter_content(self, chunk_size: int) -> object:
             yield b"partial-data"
@@ -154,8 +165,9 @@ def test_dl_and_save_img_cleans_up_partial_file_on_stream_error(
 def test_run_stops_one_page_past_the_last_real_page(
     config, monkeypatch: "pytest.MonkeyPatch"
 ) -> None:
-    """A fully-missing page costs `fails` (2) attempts, so the run stops right after it --
-    never touching the page after -- matching the pre-refactor script's behavior.
+    """The run stops right after a fully-missing page, never trying the next one.
+
+    A missing page costs `fails` (2) attempts, matching the pre-refactor script's behavior.
     """
     monkeypatch.setattr(downloader, "get_last_saved", lambda *_a, **_k: 1283)
     monkeypatch.setattr(downloader.time, "sleep", lambda *_a: None)
@@ -201,6 +213,7 @@ def test_run_does_not_terminate_permanently_after_one_early_transient_failure(
 
 
 def test_run_force_starts_from_page_one(config, monkeypatch: "pytest.MonkeyPatch") -> None:
+    """`--force` downloads from page 1 whatever is already saved."""
     monkeypatch.setattr(downloader, "get_last_saved", lambda *_a, **_k: 9999)
     monkeypatch.setattr(downloader.time, "sleep", lambda *_a: None)
 

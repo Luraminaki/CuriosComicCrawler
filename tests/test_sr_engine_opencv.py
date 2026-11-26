@@ -22,6 +22,7 @@ def test_prepare_resolves_model_path_and_manifest_spec(
     tmp_path: "pathlib.Path",
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
+    """Preparing the OpenCV engine resolves the model file and its manifest entry."""
     model_path = tmp_path / "EDSR_x3.pb"
     monkeypatch.setattr(sr_engine_opencv, "ensure_model", lambda *_a, **_k: model_path)
 
@@ -37,6 +38,7 @@ def test_prepare_passes_models_dir_and_config_through_to_ensure_model(
     tmp_path: "pathlib.Path",
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
+    """The models folder and chosen model reach the model download step."""
     captured: dict[str, object] = {}
 
     def _fake_ensure_model(

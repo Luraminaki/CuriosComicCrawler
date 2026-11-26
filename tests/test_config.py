@@ -15,6 +15,7 @@ from curios_comic_crawler.config import (
 
 
 def test_valid_config_validates(valid_config_dict: dict) -> None:
+    """A complete config loads, with the upscaler's own settings typed by engine."""
     config = AppConfig.model_validate(valid_config_dict)
 
     assert config.bd_name == "SA"
@@ -23,6 +24,7 @@ def test_valid_config_validates(valid_config_dict: dict) -> None:
 
 
 def test_missing_required_field_is_rejected(valid_config_dict: dict) -> None:
+    """A config without `root_site` is refused."""
     del valid_config_dict["root_site"]
 
     with pytest.raises(ValidationError):
@@ -33,6 +35,7 @@ def test_missing_required_field_is_rejected(valid_config_dict: dict) -> None:
 def test_root_site_must_be_http_with_trailing_slash(
     valid_config_dict: dict, bad_root_site: str
 ) -> None:
+    """`root_site` must be an http(s) URL ending with a slash."""
     valid_config_dict["root_site"] = bad_root_site
 
     with pytest.raises(ValidationError):
@@ -43,6 +46,7 @@ def test_root_site_must_be_http_with_trailing_slash(
 def test_bd_name_rejects_path_segments_and_reserved_names(
     valid_config_dict: dict, bad_bd_name: str
 ) -> None:
+    """`BD_name` can't hold a path segment or a Windows reserved name."""
     valid_config_dict["BD_name"] = bad_bd_name
 
     with pytest.raises(ValidationError):
@@ -50,6 +54,7 @@ def test_bd_name_rejects_path_segments_and_reserved_names(
 
 
 def test_filename_variants_requires_at_least_one_entry(valid_config_dict: dict) -> None:
+    """At least one filename variant is required."""
     valid_config_dict["filename_variants"] = []
 
     with pytest.raises(ValidationError):
@@ -57,6 +62,7 @@ def test_filename_variants_requires_at_least_one_entry(valid_config_dict: dict) 
 
 
 def test_unknown_model_scale_combo_is_rejected(valid_config_dict: dict) -> None:
+    """An OpenCV model/scale pair with no known model is refused, naming the model."""
     valid_config_dict["upscaler"] = {
         "engine": "opencv",
         "model_name": "lapsrn",
@@ -68,6 +74,7 @@ def test_unknown_model_scale_combo_is_rejected(valid_config_dict: dict) -> None:
 
 
 def test_onnx_upscaler_config_validates(valid_config_dict: dict) -> None:
+    """The ONNX engine's config loads with its chosen model."""
     valid_config_dict["upscaler"] = {"engine": "onnx", "onnx_model": "realesr-animevideov3-x4"}
 
     config = AppConfig.model_validate(valid_config_dict)
@@ -77,6 +84,7 @@ def test_onnx_upscaler_config_validates(valid_config_dict: dict) -> None:
 
 
 def test_onnx_upscaler_config_defaults_model(valid_config_dict: dict) -> None:
+    """Without a model, the ONNX engine uses `realesr-animevideov3-x4`."""
     valid_config_dict["upscaler"] = {"engine": "onnx"}
 
     config = AppConfig.model_validate(valid_config_dict)
@@ -86,6 +94,7 @@ def test_onnx_upscaler_config_defaults_model(valid_config_dict: dict) -> None:
 
 
 def test_unknown_upscaler_engine_is_rejected(valid_config_dict: dict) -> None:
+    """An engine other than `onnx`/`opencv` is refused."""
     valid_config_dict["upscaler"] = {"engine": "pytorch", "model_name": "edsr", "model_scale": 3}
 
     with pytest.raises(ValidationError):
@@ -94,6 +103,7 @@ def test_unknown_upscaler_engine_is_rejected(valid_config_dict: dict) -> None:
 
 @pytest.mark.parametrize("gray_values", [1, 256])
 def test_gray_values_out_of_bounds_is_rejected(valid_config_dict: dict, gray_values: int) -> None:
+    """`gray_values` must stay within 2-255."""
     valid_config_dict["gray_values"] = gray_values
 
     with pytest.raises(ValidationError):
@@ -101,6 +111,7 @@ def test_gray_values_out_of_bounds_is_rejected(valid_config_dict: dict, gray_val
 
 
 def test_derived_paths_join_correctly(valid_config_dict: dict) -> None:
+    """Download, upscale and model folders are derived from the data folder and comic name."""
     config = AppConfig.model_validate(valid_config_dict)
 
     assert config.dl_dir == pathlib.Path("data/DL/SA")
@@ -109,11 +120,13 @@ def test_derived_paths_join_correctly(valid_config_dict: dict) -> None:
 
 
 def test_load_config_missing_file_raises(tmp_path: pathlib.Path) -> None:
+    """A missing config file raises `FileNotFoundError`."""
     with pytest.raises(FileNotFoundError):
         load_config(tmp_path / "does_not_exist.json")
 
 
 def test_load_config_reads_and_validates(tmp_path: pathlib.Path, valid_config_dict: dict) -> None:
+    """A config file on disk is read and validated."""
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(valid_config_dict), encoding="utf-8")
 
