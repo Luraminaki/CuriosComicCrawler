@@ -16,7 +16,7 @@ def _gradient_image(height: int = 16, width: int = 16) -> np.ndarray:
 def test_area_posterise_rejects_non_uint8_dtype() -> None:
     data = _gradient_image().astype(np.float32)
 
-    with pytest.raises(TypeError, match='uint8'):
+    with pytest.raises(TypeError, match="uint8"):
         area_posterise(data, nbr_cluster=4)
 
 

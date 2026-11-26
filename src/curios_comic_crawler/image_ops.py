@@ -30,10 +30,14 @@ def area_posterise(data: np.ndarray, nbr_cluster: int = 2, nbr_iterations: int =
         TypeError: If `data.dtype` isn't `uint8`.
     """
     if data.dtype != np.uint8:
-        raise TypeError(f'area_posterise only supports uint8 data, got {data.dtype}')
+        raise TypeError(f"area_posterise only supports uint8 data, got {data.dtype}")
 
     if not 1 < nbr_cluster <= _MAX_CLUSTERS:
-        logger.warning("Change the value of %s for 'nbr_cluster' should be (1 ~ %s)", nbr_cluster, _MAX_CLUSTERS)
+        logger.warning(
+            "Change the value of %s for 'nbr_cluster' should be (1 ~ %s)",
+            nbr_cluster,
+            _MAX_CLUSTERS,
+        )
         return data
 
     # 255 clusters over 256 possible uint8 values would leave the data virtually unchanged;
@@ -50,7 +54,8 @@ def area_posterise(data: np.ndarray, nbr_cluster: int = 2, nbr_iterations: int =
     if unique_count <= nbr_cluster:
         logger.warning(
             "Requested clusters %s can't be higher than the number of unique elements %s to organise",
-            nbr_cluster, unique_count,
+            nbr_cluster,
+            unique_count,
         )
         return data
 
@@ -64,17 +69,23 @@ def area_posterise(data: np.ndarray, nbr_cluster: int = 2, nbr_iterations: int =
         return data
 
     bin_edges = np.linspace(data_min, data_max, nbr_cluster + 1, dtype=np.float32)
-    initial_bins = np.searchsorted(bin_edges[1:-1], area_to_posterise.ravel(), side='right')
+    initial_bins = np.searchsorted(bin_edges[1:-1], area_to_posterise.ravel(), side="right")
     best_labels = initial_bins.astype(np.int32).reshape(-1, 1)
 
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max(int(nbr_iterations), 1), 1.0)
+    criteria = (
+        cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+        max(int(nbr_iterations), 1),
+        1.0,
+    )
     flags = cv2.KMEANS_USE_INITIAL_LABELS
-    _, labels, centers = cv2.kmeans(data=area_to_posterise,
-                                     K=nbr_cluster,
-                                     bestLabels=best_labels,
-                                     criteria=criteria,
-                                     attempts=1,
-                                     flags=flags)
+    _, labels, centers = cv2.kmeans(
+        data=area_to_posterise,
+        K=nbr_cluster,
+        bestLabels=best_labels,
+        criteria=criteria,
+        attempts=1,
+        flags=flags,
+    )
     centers = centers.astype(np.uint8, copy=False)
     labels_flat = labels.ravel().astype(np.intp, copy=False)
     return np.take(centers, labels_flat, axis=0).reshape(data.shape)
@@ -87,7 +98,11 @@ def _unsharp_pass(image: np.ndarray, ksize: int, sigma: float) -> np.ndarray:
 
 
 def sharpen_image(
-    image: np.ndarray, ksize_1: int = 7, ksize_2: int = 7, sigma_1: float = 1., sigma_2: float = 2.,
+    image: np.ndarray,
+    ksize_1: int = 7,
+    ksize_2: int = 7,
+    sigma_1: float = 1.0,
+    sigma_2: float = 2.0,
 ) -> np.ndarray:
     """Sharpen an image with a two-pass unsharp mask.
 

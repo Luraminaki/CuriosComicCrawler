@@ -14,12 +14,15 @@ and returns a small picklable value; `build_engine()` runs inside each worker (c
 `upscaler._init_worker`) and turns that value into a live engine instance.
 """
 
-from typing import Protocol
-
-import numpy as np
+from typing import TYPE_CHECKING, Protocol
 
 from curios_comic_crawler import sr_engine_onnx, sr_engine_opencv
-from curios_comic_crawler.config import AppConfig, OnnxUpscaleConfig, OpenCVUpscaleConfig
+from curios_comic_crawler.config import OnnxUpscaleConfig, OpenCVUpscaleConfig
+
+if TYPE_CHECKING:
+    import numpy as np
+
+    from curios_comic_crawler.config import AppConfig
 
 EngineInit = sr_engine_opencv.OpenCVEngineInit | sr_engine_onnx.OnnxEngineInit
 
@@ -27,7 +30,7 @@ EngineInit = sr_engine_opencv.OpenCVEngineInit | sr_engine_onnx.OnnxEngineInit
 class SREngine(Protocol):
     """A super-resolution backend: takes a BGR image, returns an upscaled BGR image."""
 
-    def upscale(self, image: np.ndarray) -> np.ndarray:
+    def upscale(self, image: "np.ndarray") -> "np.ndarray":
         """Upscale `image` (BGR, as read by `cv2.imread`) and return the result.
 
         Args:
@@ -39,7 +42,7 @@ class SREngine(Protocol):
         ...
 
 
-def prepare_engine(config: AppConfig) -> EngineInit:
+def prepare_engine(config: "AppConfig") -> EngineInit:
     """Run the configured engine's main-process setup (e.g. downloading a model).
 
     Must be called once, before any worker process is forked.
@@ -55,7 +58,7 @@ def prepare_engine(config: AppConfig) -> EngineInit:
         return sr_engine_opencv.prepare(upscaler_config, config.models_dir)
     if isinstance(upscaler_config, OnnxUpscaleConfig):
         return sr_engine_onnx.prepare(upscaler_config)
-    raise RuntimeError(f'Unhandled upscaler config: {upscaler_config!r}')  # pragma: no cover
+    raise RuntimeError(f"Unhandled upscaler config: {upscaler_config!r}")  # pragma: no cover
 
 
 def build_engine(engine_init: EngineInit, worker_count: int) -> SREngine:
@@ -74,4 +77,4 @@ def build_engine(engine_init: EngineInit, worker_count: int) -> SREngine:
         return sr_engine_opencv.build(engine_init)
     if isinstance(engine_init, sr_engine_onnx.OnnxEngineInit):
         return sr_engine_onnx.build(engine_init, worker_count)
-    raise RuntimeError(f'Unhandled engine init: {engine_init!r}')  # pragma: no cover
+    raise RuntimeError(f"Unhandled engine init: {engine_init!r}")  # pragma: no cover

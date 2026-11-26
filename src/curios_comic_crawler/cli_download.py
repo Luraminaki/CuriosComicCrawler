@@ -1,28 +1,34 @@
 #!/usr/bin/env python3
 """Console-script entry point: download comic pages."""
 
-import argparse
 import sys
+from typing import TYPE_CHECKING
 
 from curios_comic_crawler import downloader
 from curios_comic_crawler._cli import main
 
+if TYPE_CHECKING:
+    import argparse
 
-def _configure_parser(parser: argparse.ArgumentParser) -> None:
+
+def _configure_parser(parser: "argparse.ArgumentParser") -> None:
     parser.add_argument(
-        '--force', action='store_true',
-        help='Re-download every page, ignoring what is already saved.',
+        "--force",
+        action="store_true",
+        help="Re-download every page, ignoring what is already saved.",
     )
 
 
 def cli() -> None:
     """Run the downloader and exit with its return code."""
-    sys.exit(main(
-        'comiccrawler-download',
-        lambda config, args: downloader.run(config, force=args.force),
-        configure_parser=_configure_parser,
-    ))
+    sys.exit(
+        main(
+            "comiccrawler-download",
+            lambda config, args: downloader.run(config, force=args.force),
+            configure_parser=_configure_parser,
+        )
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()

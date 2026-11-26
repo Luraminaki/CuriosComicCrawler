@@ -5,13 +5,13 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-ModelName = Literal['edsr', 'espcn', 'fsrcnn', 'fsrcnn-small', 'lapsrn']
+ModelName = Literal["edsr", "espcn", "fsrcnn", "fsrcnn-small", "lapsrn"]
 
 OnnxModelName = Literal[
-    'realesr-animevideov3-x4',
-    'realesrgan-x4plus-anime-6b',
-    'realesr-general-x4v3',
-    'realesrgan-x4plus',
+    "realesr-animevideov3-x4",
+    "realesrgan-x4plus-anime-6b",
+    "realesr-general-x4v3",
+    "realesrgan-x4plus",
 ]
 
 
@@ -35,5 +35,5 @@ class ModelSpec(BaseModel):
     scale: int
     filename: str
     url: str
-    algorithm: Literal['edsr', 'espcn', 'fsrcnn', 'lapsrn']
+    algorithm: Literal["edsr", "espcn", "fsrcnn", "lapsrn"]
     sha256: str

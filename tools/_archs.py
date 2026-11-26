@@ -25,8 +25,13 @@ class SRVGGNetCompact(nn.Module):
     """
 
     def __init__(  # noqa: PLR0913
-        self, num_in_ch: int = 3, num_out_ch: int = 3, num_feat: int = 64,
-        num_conv: int = 16, upscale: int = 4, act_type: str = 'prelu',
+        self,
+        num_in_ch: int = 3,
+        num_out_ch: int = 3,
+        num_feat: int = 64,
+        num_conv: int = 16,
+        upscale: int = 4,
+        act_type: str = "prelu",
     ) -> None:
         """Build the conv stack for the given hyperparameters (see the checkpoint's own docs).
 
@@ -69,13 +74,13 @@ class SRVGGNetCompact(nn.Module):
         Raises:
             NotImplementedError: If `act_type` isn't one of the three supported values.
         """
-        if act_type == 'relu':
+        if act_type == "relu":
             return nn.ReLU(inplace=True)
-        if act_type == 'prelu':
+        if act_type == "prelu":
             return nn.PReLU(num_parameters=num_feat)
-        if act_type == 'leakyrelu':
+        if act_type == "leakyrelu":
             return nn.LeakyReLU(negative_slope=0.1, inplace=True)
-        raise NotImplementedError(f'activation {act_type!r} not implemented')
+        raise NotImplementedError(f"activation {act_type!r} not implemented")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run the compact conv stack, pixel-shuffle it up, and add the residual.
@@ -92,7 +97,7 @@ class SRVGGNetCompact(nn.Module):
             out = layer(out)
 
         out = self.upsampler(out)
-        base = F.interpolate(x, scale_factor=self.upscale, mode='nearest')
+        base = F.interpolate(x, scale_factor=self.upscale, mode="nearest")
         out += base
         return out
 
@@ -171,8 +176,13 @@ class RRDBNet(nn.Module):
     """
 
     def __init__(  # noqa: PLR0913
-        self, num_in_ch: int = 3, num_out_ch: int = 3, scale: int = 4,
-        num_feat: int = 64, num_block: int = 23, num_grow_ch: int = 32,
+        self,
+        num_in_ch: int = 3,
+        num_out_ch: int = 3,
+        scale: int = 4,
+        num_feat: int = 64,
+        num_block: int = 23,
+        num_grow_ch: int = 32,
     ) -> None:
         """Build the trunk (`num_block` RRDB blocks) and upsampling head for `scale=4`.
 
@@ -190,7 +200,7 @@ class RRDBNet(nn.Module):
         """
         super().__init__()
         if scale != 4:  # noqa: PLR2004
-            raise NotImplementedError('only scale=4 is reproduced/verified by this tool')
+            raise NotImplementedError("only scale=4 is reproduced/verified by this tool")
 
         self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
         self.body = nn.Sequential(*[_RRDB(num_feat, num_grow_ch) for _ in range(num_block)])
@@ -214,6 +224,6 @@ class RRDBNet(nn.Module):
         feat = self.conv_first(x)
         body_feat = self.conv_body(self.body(feat))
         feat = feat + body_feat
-        feat = self.lrelu(self.conv_up1(F.interpolate(feat, scale_factor=2, mode='nearest')))
-        feat = self.lrelu(self.conv_up2(F.interpolate(feat, scale_factor=2, mode='nearest')))
+        feat = self.lrelu(self.conv_up1(F.interpolate(feat, scale_factor=2, mode="nearest")))
+        feat = self.lrelu(self.conv_up2(F.interpolate(feat, scale_factor=2, mode="nearest")))
         return self.conv_last(self.lrelu(self.conv_hr(feat)))

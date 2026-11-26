@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """SREngine implementation backed by OpenCV's `dnn_superres` module."""
 
-import pathlib
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import cv2
-import numpy as np
 
-from curios_comic_crawler.config import OpenCVUpscaleConfig
 from curios_comic_crawler.model_registry import MODEL_MANIFEST, ensure_model
+
+if TYPE_CHECKING:
+    import pathlib
+
+    import numpy as np
+
+    from curios_comic_crawler.config import OpenCVUpscaleConfig
 
 
 class OpenCVEngineInit(NamedTuple):
     """Picklable data a worker process needs to build an `OpenCVEngine`."""
 
-    model_path: pathlib.Path
+    model_path: "pathlib.Path"
     algorithm: str
     scale: int
 
@@ -40,12 +44,12 @@ class OpenCVEngine:
         sup_res.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
         self._sup_res = sup_res
 
-    def upscale(self, image: np.ndarray) -> np.ndarray:
+    def upscale(self, image: "np.ndarray") -> "np.ndarray":
         """Upscale `image` with the loaded model."""
         return self._sup_res.upsample(image)
 
 
-def prepare(upscaler_config: OpenCVUpscaleConfig, models_dir: pathlib.Path) -> OpenCVEngineInit:
+def prepare(upscaler_config: "OpenCVUpscaleConfig", models_dir: "pathlib.Path") -> OpenCVEngineInit:
     """Download/verify the configured model (once, in the main process) and describe it.
 
     Args:

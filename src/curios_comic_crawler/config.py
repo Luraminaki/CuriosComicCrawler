@@ -6,18 +6,26 @@ Replaces raw `dict` access into a parsed `config.json` with a validated pydantic
 
 import json
 import pathlib
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from curios_comic_crawler.model_registry import MODEL_MANIFEST
 from curios_comic_crawler.models import ModelName, OnnxModelName
 
-_WINDOWS_RESERVED_NAMES = frozenset({
-    'CON', 'PRN', 'AUX', 'NUL',
-    *(f'COM{i}' for i in range(1, 10)),
-    *(f'LPT{i}' for i in range(1, 10)),
-})
+if TYPE_CHECKING:
+    from pydantic import ValidationInfo
+
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{i}" for i in range(1, 10)),
+        *(f"LPT{i}" for i in range(1, 10)),
+    }
+)
 
 
 class OpenCVUpscaleConfig(BaseModel):
@@ -28,17 +36,19 @@ class OpenCVUpscaleConfig(BaseModel):
         model_scale: Upscaling factor to use for `model_name`.
     """
 
-    engine: Literal['opencv'] = 'opencv'
+    engine: Literal["opencv"] = "opencv"
     model_name: ModelName
     model_scale: int
 
-    @model_validator(mode='after')
-    def _check_model_combo(self) -> 'OpenCVUpscaleConfig':
+    @model_validator(mode="after")
+    def _check_model_combo(self) -> "OpenCVUpscaleConfig":
         if (self.model_name, self.model_scale) not in MODEL_MANIFEST:
-            known_scales = sorted(scale for name, scale in MODEL_MANIFEST if name == self.model_name)
+            known_scales = sorted(
+                scale for name, scale in MODEL_MANIFEST if name == self.model_name
+            )
             raise ValueError(
-                f'No known model for model_name={self.model_name!r}, model_scale={self.model_scale!r}. '
-                f'Known scales for {self.model_name!r}: {known_scales}'
+                f"No known model for model_name={self.model_name!r}, model_scale={self.model_scale!r}. "
+                f"Known scales for {self.model_name!r}: {known_scales}"
             )
         return self
 
@@ -54,11 +64,11 @@ class OnnxUpscaleConfig(BaseModel):
             art; `realesrgan-x4plus` is the general-purpose (photo) exception.
     """
 
-    engine: Literal['onnx'] = 'onnx'
-    onnx_model: OnnxModelName = 'realesr-animevideov3-x4'
+    engine: Literal["onnx"] = "onnx"
+    onnx_model: OnnxModelName = "realesr-animevideov3-x4"
 
 
-UpscaleConfig = Annotated[OpenCVUpscaleConfig | OnnxUpscaleConfig, Field(discriminator='engine')]
+UpscaleConfig = Annotated[OpenCVUpscaleConfig | OnnxUpscaleConfig, Field(discriminator="engine")]
 
 
 class AppConfig(BaseModel):
@@ -96,7 +106,7 @@ class AppConfig(BaseModel):
     """
 
     root_site: str
-    bd_name: str = Field(alias='BD_name')
+    bd_name: str = Field(alias="BD_name")
     padded: int = Field(gt=0)
     fails: int = Field(gt=0)
     filename_variants: list[str] = Field(min_length=1)
@@ -110,38 +120,38 @@ class AppConfig(BaseModel):
     headers: dict[str, str]
     upscale_workers: int | None = Field(default=None, ge=1)
 
-    model_config = {'populate_by_name': True}
+    model_config = {"populate_by_name": True}
 
-    @field_validator('bd_name')
+    @field_validator("bd_name")
     @classmethod
     def _check_bd_name(cls, value: str) -> str:
-        if not value or value in ('.', '..') or any(sep in value for sep in ('/', '\\')):
-            raise ValueError(f'BD_name must be a single path segment, not {value!r}')
+        if not value or value in (".", "..") or any(sep in value for sep in ("/", "\\")):
+            raise ValueError(f"BD_name must be a single path segment, not {value!r}")
         if value.upper() in _WINDOWS_RESERVED_NAMES:
-            raise ValueError(f'BD_name {value!r} is a reserved Windows device name')
+            raise ValueError(f"BD_name {value!r} is a reserved Windows device name")
         return value
 
-    @field_validator('ext')
+    @field_validator("ext")
     @classmethod
     def _check_ext(cls, value: str) -> str:
-        if not value.startswith('.'):
-            raise ValueError(f'ext must start with a leading dot, not {value!r}')
+        if not value.startswith("."):
+            raise ValueError(f"ext must start with a leading dot, not {value!r}")
         return value
 
-    @field_validator('folder_data', 'folder_save_dl', 'folder_save_upscale', 'folder_models')
+    @field_validator("folder_data", "folder_save_dl", "folder_save_upscale", "folder_models")
     @classmethod
-    def _check_data_folder(cls, value: str, info: ValidationInfo) -> str:
+    def _check_data_folder(cls, value: str, info: "ValidationInfo") -> str:
         if not value:
-            raise ValueError(f'{info.field_name} must not be empty')
-        if '..' in pathlib.PurePath(value).parts:
+            raise ValueError(f"{info.field_name} must not be empty")
+        if ".." in pathlib.PurePath(value).parts:
             raise ValueError(f'{info.field_name} must not contain ".." path segments: {value!r}')
         return value
 
-    @model_validator(mode='after')
-    def _check_root_site(self) -> 'AppConfig':
-        if not self.root_site.startswith('http'):
+    @model_validator(mode="after")
+    def _check_root_site(self) -> "AppConfig":
+        if not self.root_site.startswith("http"):
             raise ValueError(f'root_site must start with "http": {self.root_site!r}')
-        if not self.root_site.endswith('/'):
+        if not self.root_site.endswith("/"):
             raise ValueError(f'root_site must end with "/": {self.root_site!r}')
         return self
 
@@ -164,7 +174,7 @@ class AppConfig(BaseModel):
         return self._under_data(self.folder_models)
 
 
-def load_config(path: 'str | pathlib.Path') -> AppConfig:
+def load_config(path: "str | pathlib.Path") -> AppConfig:
     """Read and validate a `config.json` file.
 
     Args:
@@ -180,7 +190,7 @@ def load_config(path: 'str | pathlib.Path') -> AppConfig:
     """
     config_path = pathlib.Path(path).expanduser().resolve()
     if not config_path.is_file():
-        raise FileNotFoundError(f'Config file not found: {config_path}')
+        raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    raw_config = json.loads(config_path.read_text(encoding='utf-8'))
+    raw_config = json.loads(config_path.read_text(encoding="utf-8"))
     return AppConfig.model_validate(raw_config)

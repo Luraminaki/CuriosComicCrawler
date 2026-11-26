@@ -3,17 +3,22 @@
 
 import logging
 import os
-import pathlib
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
+from typing import TYPE_CHECKING
 
 import cv2
 
 from curios_comic_crawler._worker_threads import threads_per_worker
-from curios_comic_crawler.config import AppConfig
 from curios_comic_crawler.image_ops import area_posterise, sharpen_image
-from curios_comic_crawler.sr_engine import EngineInit, SREngine, build_engine, prepare_engine
+from curios_comic_crawler.sr_engine import build_engine, prepare_engine
+
+if TYPE_CHECKING:
+    import pathlib
+
+    from curios_comic_crawler.config import AppConfig
+    from curios_comic_crawler.sr_engine import EngineInit, SREngine
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +29,10 @@ _MAX_IN_FLIGHT_BATCHES_PER_WORKER = 4
 
 # Set once per worker process by `_init_worker`, then reused for every page that process is
 # given -- reloading the model per page would dwarf the actual upscaling cost.
-_worker_engine: SREngine | None = None
+_worker_engine: "SREngine | None" = None
 
 
-def _init_worker(engine_init: EngineInit, worker_count: int) -> None:
+def _init_worker(engine_init: "EngineInit", worker_count: int) -> None:
     """Build this worker process's super-resolution engine once, for reuse across pages.
 
     Args:
@@ -47,7 +52,9 @@ def _init_worker(engine_init: EngineInit, worker_count: int) -> None:
     _worker_engine = build_engine(engine_init, worker_count)
 
 
-def _process_one(img_path: pathlib.Path, upscale_dir: pathlib.Path, gray_values: int) -> tuple[str, float]:
+def _process_one(
+    img_path: "pathlib.Path", upscale_dir: "pathlib.Path", gray_values: int
+) -> tuple[str, float]:
     """Upscale, posterise, sharpen, and save a single page. Runs in a worker process.
 
     Args:
@@ -59,13 +66,13 @@ def _process_one(img_path: pathlib.Path, upscale_dir: pathlib.Path, gray_values:
         tuple[str, float]: The page's filename and how long it took to process, in seconds.
     """
     if _worker_engine is None:
-        raise RuntimeError('Worker process was not initialized with an engine (see _init_worker)')
+        raise RuntimeError("Worker process was not initialized with an engine (see _init_worker)")
 
     tic = time.time()
 
     img = cv2.imread(str(img_path), cv2.IMREAD_COLOR)
     if img is None:
-        raise ValueError(f'Failed to read image (missing, corrupt, or not an image): {img_path}')
+        raise ValueError(f"Failed to read image (missing, corrupt, or not an image): {img_path}")
 
     result = _worker_engine.upscale(img)
     result = area_posterise(result, gray_values)
@@ -73,14 +80,19 @@ def _process_one(img_path: pathlib.Path, upscale_dir: pathlib.Path, gray_values:
 
     out_path = upscale_dir / img_path.name
     if not cv2.imwrite(str(out_path), result):
-        raise OSError(f'Failed to write upscaled image (unsupported extension, full disk, or permissions): {out_path}')
+        raise OSError(
+            f"Failed to write upscaled image (unsupported extension, full disk, or permissions): {out_path}"
+        )
 
     return img_path.name, round(time.time() - tic, 2)
 
 
 def _select_remaining(
-    originals: list[pathlib.Path], completed: list[pathlib.Path], *, force: bool,
-) -> list[pathlib.Path]:
+    originals: list["pathlib.Path"],
+    completed: list["pathlib.Path"],
+    *,
+    force: bool,
+) -> list["pathlib.Path"]:
     """Decide which downloaded pages still need upscaling.
 
     Matches by filename rather than by position/count, so a gap in `completed` (a page that
@@ -122,9 +134,11 @@ def _resolve_worker_count(configured_workers: int | None, remaining_count: int) 
 
     if worker_count > cpu_count:
         logger.warning(
-            'upscale_workers=%s exceeds the %s available CPU core(s); capping to %s to avoid '
-            'spawning more model-loaded worker processes than the machine can run concurrently',
-            worker_count, cpu_count, cpu_count,
+            "upscale_workers=%s exceeds the %s available CPU core(s); capping to %s to avoid "
+            "spawning more model-loaded worker processes than the machine can run concurrently",
+            worker_count,
+            cpu_count,
+            cpu_count,
         )
         worker_count = cpu_count
 
@@ -160,10 +174,10 @@ def _format_duration(total_seconds: float) -> str:
     hours = int(total_seconds / (60 * 60)) % 24
     minutes = int(total_seconds / 60) % 60
     seconds = int(total_seconds) % 60
-    return f'{days}d - {hours}h:{minutes}m:{seconds}s'
+    return f"{days}d - {hours}h:{minutes}m:{seconds}s"
 
 
-def run(config: AppConfig, *, force: bool = False) -> int:
+def run(config: "AppConfig", *, force: bool = False) -> int:
     """Upscale comic pages that haven't been upscaled yet.
 
     Pages are processed in parallel, each in its own worker process (see
@@ -181,23 +195,26 @@ def run(config: AppConfig, *, force: bool = False) -> int:
     config.dl_dir.mkdir(exist_ok=True, parents=True)
     config.upscale_dir.mkdir(exist_ok=True, parents=True)
 
-    originals = sorted(config.dl_dir.glob(f'*{config.ext}'))
-    completed = [] if force else sorted(config.upscale_dir.glob(f'*{config.ext}'))
+    originals = sorted(config.dl_dir.glob(f"*{config.ext}"))
+    completed = [] if force else sorted(config.upscale_dir.glob(f"*{config.ext}"))
     remaining = _select_remaining(originals, completed, force=force)
 
     if force:
-        logger.info('Force re-upscale requested, reprocessing all %s downloaded page(s)', len(originals))
+        logger.info(
+            "Force re-upscale requested, reprocessing all %s downloaded page(s)", len(originals)
+        )
 
     if not remaining:
-        logger.info('Nothing to upscale in %s', config.dl_dir)
+        logger.info("Nothing to upscale in %s", config.dl_dir)
         return 0
 
     engine_init = prepare_engine(config)
 
     worker_count = _resolve_worker_count(config.upscale_workers, len(remaining))
     logger.info(
-        'Using upscaler engine=%s across %s worker process(es)',
-        config.upscaler.engine, worker_count,
+        "Using upscaler engine=%s across %s worker process(es)",
+        config.upscaler.engine,
+        worker_count,
     )
 
     completed_count = 0
@@ -216,7 +233,7 @@ def run(config: AppConfig, *, force: bool = False) -> int:
         initargs=(engine_init, worker_count),
     ) as executor:
         for batch_start in range(0, len(remaining), batch_size):
-            batch = remaining[batch_start:batch_start + batch_size]
+            batch = remaining[batch_start : batch_start + batch_size]
             futures = [
                 executor.submit(_process_one, img_path, config.upscale_dir, config.gray_values)
                 for img_path in batch
@@ -232,16 +249,17 @@ def run(config: AppConfig, *, force: bool = False) -> int:
                     # once per remaining page.
                     still_pending = len(remaining) - completed_count - failed_count
                     logger.error(
-                        'Worker pool crashed while initializing the upscale engine (likely out '
-                        'of memory) -- aborting the remaining %s page(s) instead of reporting '
-                        'them individually', still_pending,
+                        "Worker pool crashed while initializing the upscale engine (likely out "
+                        "of memory) -- aborting the remaining %s page(s) instead of reporting "
+                        "them individually",
+                        still_pending,
                     )
                     failed_count += still_pending
                     pool_broken = True
                     break
                 except Exception:
                     failed_count += 1
-                    logger.exception('A page failed to upscale')
+                    logger.exception("A page failed to upscale")
                     continue
 
                 completed_count += 1
@@ -252,15 +270,19 @@ def run(config: AppConfig, *, force: bool = False) -> int:
                 eta_seconds = _estimate_eta_seconds(avg_per_page, remaining_count, worker_count)
 
                 logger.info(
-                    'Image %s processed in %ss (%s/%s done). Estimated remaining time: %s',
-                    name, elapsed, completed_count, len(remaining), _format_duration(eta_seconds),
+                    "Image %s processed in %ss (%s/%s done). Estimated remaining time: %s",
+                    name,
+                    elapsed,
+                    completed_count,
+                    len(remaining),
+                    _format_duration(eta_seconds),
                 )
 
             if pool_broken:
                 break
 
     if failed_count:
-        logger.warning('%s of %s page(s) failed to upscale', failed_count, len(remaining))
+        logger.warning("%s of %s page(s) failed to upscale", failed_count, len(remaining))
         return 1
 
     return 0

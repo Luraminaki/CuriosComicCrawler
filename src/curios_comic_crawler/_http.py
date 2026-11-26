@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """Shared HTTP streaming helper used by the downloader and the model registry."""
 
-import pathlib
+from typing import TYPE_CHECKING
 
-import requests
+if TYPE_CHECKING:
+    import pathlib
+
+    import requests
 
 CHUNK_SIZE_BYTES = 256 * 1024
 
 
-def stream_to_file(response: requests.Response, path: pathlib.Path, chunk_size: int = CHUNK_SIZE_BYTES) -> None:
+def stream_to_file(
+    response: "requests.Response", path: "pathlib.Path", chunk_size: int = CHUNK_SIZE_BYTES
+) -> None:
     """Write a streamed response's body to `path`, chunk by chunk.
 
     Args:
@@ -16,6 +21,6 @@ def stream_to_file(response: requests.Response, path: pathlib.Path, chunk_size: 
         path (pathlib.Path): Destination file path.
         chunk_size (int, optional): Bytes read per iteration. Defaults to `CHUNK_SIZE_BYTES`.
     """
-    with path.open('wb') as target:
+    with path.open("wb") as target:
         for chunk in response.iter_content(chunk_size):
             target.write(chunk)

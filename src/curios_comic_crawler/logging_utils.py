@@ -26,9 +26,9 @@ def _prune_old_runs(log_dir: pathlib.Path, log_file_stem: str, max_runs: int) ->
         log_file_stem (str): The stem shared by this script's log files.
         max_runs (int): Number of most recent runs (by file set) to keep.
     """
-    run_pattern = re.compile(rf'^{re.escape(log_file_stem)}-(\d+)\.log(\.\d+)?$')
+    run_pattern = re.compile(rf"^{re.escape(log_file_stem)}-(\d+)\.log(\.\d+)?$")
     runs: dict[str, list[pathlib.Path]] = {}
-    for path in log_dir.glob(f'{log_file_stem}-*.log*'):
+    for path in log_dir.glob(f"{log_file_stem}-*.log*"):
         match = run_pattern.match(path.name)
         if match is not None:
             runs.setdefault(match.group(1), []).append(path)
@@ -40,7 +40,9 @@ def _prune_old_runs(log_dir: pathlib.Path, log_file_stem: str, max_runs: int) ->
     # landing in the same tick vanishingly rare, without relying on PID ordering -- PIDs can be
     # recycled by the OS, so a higher PID is not reliably a more recent run.
     newest_first = sorted(
-        runs, key=lambda pid: max(p.stat().st_mtime_ns for p in runs[pid]), reverse=True,
+        runs,
+        key=lambda pid: max(p.stat().st_mtime_ns for p in runs[pid]),
+        reverse=True,
     )
     for pid in newest_first[max_runs:]:
         for path in runs[pid]:
@@ -75,17 +77,19 @@ def configure_launcher_logging(
     """
     logreset.reset_logging()
 
-    log_dir = (log_dir or pathlib.Path.cwd())
+    log_dir = log_dir or pathlib.Path.cwd()
     log_dir.mkdir(parents=True, exist_ok=True)
     _prune_old_runs(log_dir, log_file_stem, max_runs)
-    log_file = log_dir / f'{log_file_stem}-{os.getpid()}.log'
+    log_file = log_dir / f"{log_file_stem}-{os.getpid()}.log"
     # `level` also applies to the root logger even though `handlers` is given (see the
     # `logging.basicConfig` docs), so no separate `logging.getLogger().setLevel(...)` is needed.
     logging.basicConfig(
         level=logging.INFO,
-        format='[%(asctime)s] [%(process)s] [%(name)s] [%(levelname)s]: %(funcName)s -- %(message)s',
+        format="[%(asctime)s] [%(process)s] [%(name)s] [%(levelname)s]: %(funcName)s -- %(message)s",
         handlers=[
-            RotatingFileHandler(log_file, mode='a', maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8'),
+            RotatingFileHandler(
+                log_file, mode="a", maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+            ),
             logging.StreamHandler(),
         ],
     )

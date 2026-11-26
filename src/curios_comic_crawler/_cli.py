@@ -5,19 +5,24 @@ import argparse
 import logging
 import pathlib
 import time
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from curios_comic_crawler import __version__
-from curios_comic_crawler.config import AppConfig, load_config
+from curios_comic_crawler.config import load_config
 from curios_comic_crawler.logging_utils import configure_launcher_logging
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from curios_comic_crawler.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
 
 def main(
     script_name: str,
-    run: Callable[[AppConfig, argparse.Namespace], int],
-    configure_parser: Callable[[argparse.ArgumentParser], None] | None = None,
+    run: "Callable[[AppConfig, argparse.Namespace], int]",
+    configure_parser: "Callable[[argparse.ArgumentParser], None] | None" = None,
 ) -> int:
     """Parse arguments, load configuration, then run `run` with consistent logging/timing.
 
@@ -35,33 +40,37 @@ def main(
     # Parsed before logging is configured, so `--help`/bad arguments exit cleanly without
     # creating a log file.
     parser = argparse.ArgumentParser(prog=script_name)
-    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
-    parser.add_argument('-c', '--configuration', help='Configuration file location')
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-c", "--configuration", help="Configuration file location")
     if configure_parser is not None:
         configure_parser(parser)
     args = parser.parse_args()
 
     configure_launcher_logging(script_name)
-    logger.info('Version %s', __version__)
+    logger.info("Version %s", __version__)
 
-    config_file = pathlib.Path(args.configuration) if args.configuration else pathlib.Path.cwd() / 'config.json'
+    config_file = (
+        pathlib.Path(args.configuration)
+        if args.configuration
+        else pathlib.Path.cwd() / "config.json"
+    )
 
     try:
         config = load_config(config_file)
     except Exception:
-        logger.exception('Loading %s failed', config_file)
+        logger.exception("Loading %s failed", config_file)
         return 1
 
-    logger.info('%s acquired', config_file)
+    logger.info("%s acquired", config_file)
 
     tic = time.perf_counter()
     exit_code = 0
     try:
         exit_code = run(config, args)
     except Exception:
-        logger.exception('%s crashed', script_name)
+        logger.exception("%s crashed", script_name)
         exit_code = 1
     finally:
-        logger.info('Elapsed time: %ss', round(time.perf_counter() - tic, 3))
+        logger.info("Elapsed time: %ss", round(time.perf_counter() - tic, 3))
 
     return exit_code

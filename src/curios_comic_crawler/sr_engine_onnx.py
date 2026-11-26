@@ -10,22 +10,24 @@ install extra, no external hosting or sha256-pinning needed for it.
 """
 
 import pathlib
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import onnxruntime
 
 from curios_comic_crawler._worker_threads import threads_per_worker
-from curios_comic_crawler.config import OnnxUpscaleConfig
-from curios_comic_crawler.models import OnnxModelName
 
-_ASSETS_DIR = pathlib.Path(__file__).parent / 'assets'
+if TYPE_CHECKING:
+    from curios_comic_crawler.config import OnnxUpscaleConfig
+    from curios_comic_crawler.models import OnnxModelName
 
-_MODEL_FILENAMES: dict[OnnxModelName, str] = {
-    'realesr-animevideov3-x4': 'realesr-animevideov3.onnx',
-    'realesrgan-x4plus-anime-6b': 'realesrgan-x4plus-anime-6b.onnx',
-    'realesr-general-x4v3': 'realesr-general-x4v3.onnx',
-    'realesrgan-x4plus': 'realesrgan-x4plus.onnx',
+_ASSETS_DIR = pathlib.Path(__file__).parent / "assets"
+
+_MODEL_FILENAMES: dict["OnnxModelName", str] = {
+    "realesr-animevideov3-x4": "realesr-animevideov3.onnx",
+    "realesrgan-x4plus-anime-6b": "realesrgan-x4plus-anime-6b.onnx",
+    "realesr-general-x4v3": "realesr-general-x4v3.onnx",
+    "realesrgan-x4plus": "realesrgan-x4plus.onnx",
 }
 
 
@@ -52,7 +54,9 @@ class OnnxEngine:
         session_options.intra_op_num_threads = threads_per_worker(worker_count)
 
         self._session = onnxruntime.InferenceSession(
-            str(engine_init.model_path), sess_options=session_options, providers=['CPUExecutionProvider'],
+            str(engine_init.model_path),
+            sess_options=session_options,
+            providers=["CPUExecutionProvider"],
         )
 
     def upscale(self, image: np.ndarray) -> np.ndarray:
@@ -65,7 +69,7 @@ class OnnxEngine:
         rgb = image[:, :, ::-1].astype(np.float32) / 255.0
         tensor = np.ascontiguousarray(np.transpose(rgb, (2, 0, 1))[np.newaxis, ...])
 
-        (output,) = self._session.run(None, {'input': tensor})
+        (output,) = self._session.run(None, {"input": tensor})
 
         result = np.clip(output[0], 0.0, 1.0)  # pyright: ignore[reportIndexIssue]
         result = np.transpose(result, (1, 2, 0))
@@ -73,7 +77,7 @@ class OnnxEngine:
         return np.ascontiguousarray(result[:, :, ::-1])
 
 
-def prepare(upscaler_config: OnnxUpscaleConfig) -> OnnxEngineInit:
+def prepare(upscaler_config: "OnnxUpscaleConfig") -> OnnxEngineInit:
     """Resolve the bundled model's on-disk path. Nothing to download or verify.
 
     Args:
@@ -87,7 +91,7 @@ def prepare(upscaler_config: OnnxUpscaleConfig) -> OnnxEngineInit:
     """
     model_path = _ASSETS_DIR / _MODEL_FILENAMES[upscaler_config.onnx_model]
     if not model_path.is_file():
-        raise FileNotFoundError(f'Bundled ONNX model not found: {model_path}')
+        raise FileNotFoundError(f"Bundled ONNX model not found: {model_path}")
     return OnnxEngineInit(model_path=model_path)
 
 

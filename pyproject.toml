@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.6", "basedpyright>=1.18", "pytest>=8.0"]
+dev = ["ruff>=0.8", "basedpyright>=1.40", "pytest>=8.0", "pylint>=3.3", "radon>=6", "vulture>=2.14"]
 # Only needed to run tools/convert_onnx_model.py, which regenerates the bundled model in
 # sr_engine_onnx.py's assets/ from the official PyTorch weights. Not needed to use the
 # package -- onnxruntime (a base dependency) is all that's needed to run the already-converted,
@@ -47,28 +47,68 @@ comiccrawler-upscale = "curios_comic_crawler.cli_upscale:cli"
 packages = ["src/curios_comic_crawler"]
 
 [tool.ruff]
+# Lint against the oldest supported Python (see requires-python): newer syntax is flagged.
 target-version = "py311"
-line-length = 120
+line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "PL", "N", "SIM", "RUF", "D"]
-ignore = [
-    "D203", # incompatible with D211 (no-blank-line-before-class)
-    "D213", # incompatible with D212 (multi-line-summary-first-line)
+select = [
+    "E", "F", "W", "I", "UP", "B", "PL", "N", "SIM", "RUF", "D", "PERF", "NPY",
+    "TC",       # type-only imports under `if TYPE_CHECKING:`
 ]
+
+[tool.ruff.lint.flake8-type-checking]
+quote-annotations = true
+strict = true
+# Pydantic evaluates field annotations at runtime.
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.per-file-ignores]
+# Expected values in assertions are literals by nature.
+"tests/*" = ["PLR2004"]
+
 [tool.basedpyright]
-include = ["src"]
-pythonVersion = "3.11"
-typeCheckingMode = "standard"
+include = ["src", "tests", "tools"]
 venvPath = "."
 venv = ".venv"
+# Type-check against the oldest supported Python (see requires-python).
+pythonVersion = "3.11"
+typeCheckingMode = "recommended"
+# Library typing gaps (numpy, OpenCV, onnxruntime, torch), not project code -- same choice
+# as pyBones; plus lambdas given to `monkeypatch.setattr` (typed `Any`).
+reportAny = "none"
+reportExplicitAny = "none"
+reportMissingTypeArgument = "none"
+reportUnknownArgumentType = "none"
+reportUnknownLambdaType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+# `typing.override` only exists from Python 3.12; the package supports 3.11.
+reportImplicitOverride = "none"
+
+[tool.pylint.main]
+# OpenCV is a C extension: let pylint load it to see its members.
+extension-pkg-allow-list = ["cv2"]
+# Only the `convert` extra (tools/) needs them; they aren't installed for normal use.
+ignored-modules = ["torch", "onnx"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.similarities]
+min-similarity-lines = 8
+
+[tool.pylint."messages control"]
+disable = [
+    # Flags protocols, models and test fakes: data holders by design.
+    "too-few-public-methods",
+    # `assert x == []` makes pytest print the unexpected items; `assert not x` doesn't.
+    "use-implicit-booleaness-not-comparison",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D", "PLR2004"]
