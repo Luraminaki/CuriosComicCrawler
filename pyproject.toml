@@ -23,7 +23,8 @@ dependencies = [
     # opencv-python/opencv-contrib-python conflict documented in INSTALL.md (previously caused
     # by the now-removed ncnn engine's own opencv-python dependency; nothing left in this
     # project's dependency tree pulls in plain opencv-python anymore).
-    "opencv-contrib-python>=4.9",
+    # <5: OpenCV 5 can no longer read the TensorFlow .pb models the "opencv" engine uses.
+    "opencv-contrib-python>=4.9,<5",
     # Powers the default "onnx" upscale engine (see sr_engine_onnx.py) with small models
     # bundled directly in this package -- lightweight and actively maintained, unlike the
     # ncnn-based engine this replaced, so it's a base dependency rather than an extra.

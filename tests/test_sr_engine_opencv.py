@@ -1,21 +1,19 @@
 """Tests for `curios_comic_crawler.sr_engine_opencv`.
 
 `OpenCVEngine.__init__`/`upscale` need a real (large, downloaded) OpenCV `.pb` model to load via
-`cv2.dnn_superres`, so they aren't exercised here -- covered by manual end-to-end runs instead.
-`prepare()`'s composition logic (resolving the right model file/algorithm/scale for a given
-config) is cheap to test without a real download, so it's covered here by faking out
-`ensure_model`; this module previously had no test coverage at all.
+`cv2.dnn_superres`: they're tested only when a previous run already downloaded EDSR x3 (tests
+never use the network). `prepare()`'s composition logic (resolving the right model
+file/algorithm/scale for a given config) is tested without a download, by faking out
+`ensure_model`.
 """
 
-from typing import TYPE_CHECKING
+import pathlib
+
+import numpy as np
+import pytest
 
 from curios_comic_crawler import sr_engine_opencv
 from curios_comic_crawler.config import OpenCVUpscaleConfig
-
-if TYPE_CHECKING:
-    import pathlib
-
-    import pytest
 
 
 def test_prepare_resolves_model_path_and_manifest_spec(
@@ -62,3 +60,23 @@ def test_prepare_passes_models_dir_and_config_through_to_ensure_model(
     assert captured == {"models_dir": tmp_path, "model_name": "fsrcnn", "model_scale": 2}
     assert engine_init.model_path == tmp_path / "FSRCNN_x2.pb"
     assert engine_init.algorithm == "fsrcnn"
+
+
+_CACHED_MODELS = pathlib.Path(__file__).parents[1] / "data" / "models"
+
+
+@pytest.mark.skipif(
+    not (_CACHED_MODELS / "EDSR_x3.pb").is_file(),
+    reason="needs EDSR_x3.pb downloaded by a previous run (tests never use the network)",
+)
+def test_real_model_loads_and_upscales() -> None:
+    """The installed OpenCV can read the real model files (OpenCV 5 can't: pinned below 5)."""
+    engine_init = sr_engine_opencv.prepare(
+        OpenCVUpscaleConfig(engine="opencv", model_name="edsr", model_scale=3), _CACHED_MODELS
+    )
+    image = np.full((6, 4, 3), 128, dtype=np.uint8)
+
+    result = sr_engine_opencv.OpenCVEngine(engine_init).upscale(image)
+
+    assert result.shape == (18, 12, 3)
+    assert abs(int(result.mean()) - 128) <= 2

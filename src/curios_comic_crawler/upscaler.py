@@ -32,13 +32,17 @@ logger = logging.getLogger(__name__)
 
 # One worker unless configured otherwise: each worker loads its own model (~0.5 GiB for the
 # light models, ~4.3 GiB for the RRDBNet ones per full page), and a single worker already uses
-# every CPU through ONNX Runtime / OpenCV threads. More workers gain little (measured: 2 workers
-# ~13% faster on the light model) for that much more memory.
+# every physical core through ONNX Runtime / OpenCV threads. More workers gain little
+# (measured: 2 workers ~13% faster on the light model) for that much more memory.
 DEFAULT_WORKERS = 1
 INTERRUPTED_EXIT_CODE = 130  # the shell convention for "stopped by SIGINT"
 # What a single page can fail with: unreadable or unwritable file, undecodable image, engine
 # failure (RuntimeError, see sr_engine_onnx), or OpenCV refusing the data.
 _PAGE_ERRORS = (OSError, ValueError, RuntimeError, cv2.error)
+# Workers start from a fresh server process rather than a fork of this one: forking copies the
+# running log listener thread's locks (a deadlock risk), and Python 3.14 makes forkserver the
+# default on Linux anyway -- this keeps every version behaving the same. Windows only has spawn.
+_START_METHOD = "forkserver" if "forkserver" in multiprocessing.get_all_start_methods() else "spawn"
 
 # Set once per worker process by `_init_worker`, then reused for every page that process is
 # given -- reloading the model per page would dwarf the actual upscaling cost.
@@ -94,7 +98,7 @@ def _write_atomically(out_path: "pathlib.Path", image: "np.ndarray") -> None:
         raise ValueError(f"OpenCV can't encode {out_path.suffix!r} images: {out_path}")
     temporary = out_path.with_name(f".{out_path.name}.part")
     try:
-        _ = temporary.write_bytes(encoded.tobytes())
+        _ = temporary.write_bytes(encoded)  # the encoded buffer, without copying it
         _ = temporary.replace(out_path)
     finally:
         temporary.unlink(missing_ok=True)  # left only if the write failed
@@ -301,6 +305,20 @@ def _collect(futures: "dict[Future[tuple[str, float]], pathlib.Path]", progress:
         progress.record(name, elapsed)
 
 
+def _report_interrupt(futures: "dict[Future[tuple[str, float]], pathlib.Path]") -> None:
+    """Log how many pages were written and cancelled, once the pool has stopped.
+
+    Pages already handed to a worker finish after Ctrl+C (their output is written
+    atomically), so they count as written.
+
+    Args:
+        futures (dict[Future, pathlib.Path]): Every submitted page, all of them settled.
+    """
+    cancelled = sum(1 for future in futures if future.cancelled())
+    written = sum(1 for future in futures if not future.cancelled() and future.exception() is None)
+    logger.warning("Interrupted: %s page(s) written, %s cancelled", written, cancelled)
+
+
 def _pages_to_upscale(config: "AppConfig", *, force: bool) -> list["pathlib.Path"]:
     """List the downloaded pages that still need upscaling (all of them with `force`).
 
@@ -352,13 +370,15 @@ def run(config: "AppConfig", *, force: bool = False) -> int:
         worker_count,
     )
     progress = _Progress(total=len(remaining), worker_count=worker_count)
+    context = multiprocessing.get_context(_START_METHOD)
     root = logging.getLogger()
-    log_queue: Queue[logging.LogRecord] = multiprocessing.Queue()
+    log_queue: Queue[logging.LogRecord] = context.Queue()
     listener = QueueListener(log_queue, *root.handlers, respect_handler_level=True)
     listener.start()
     try:
         with ProcessPoolExecutor(
             max_workers=worker_count,
+            mp_context=context,
             initializer=_init_worker,
             initargs=(engine_init, worker_count, log_queue, root.level),
         ) as executor:
@@ -375,21 +395,17 @@ def run(config: "AppConfig", *, force: bool = False) -> int:
             try:
                 _collect(futures, progress)
             except KeyboardInterrupt:
-                # Pages not started are dropped; the ones already handed to a worker finish
-                # (their output is written atomically), then count them as well.
                 logger.warning("Interrupted: cancelling the pages not started yet...")
                 executor.shutdown(wait=True, cancel_futures=True)
-                written = sum(
-                    1 for future in futures if not future.cancelled() and future.exception() is None
-                )
-                logger.warning(
-                    "Interrupted: %s page(s) written, %s cancelled",
-                    written,
-                    sum(1 for future in futures if future.cancelled()),
-                )
+                _report_interrupt(futures)
                 return INTERRUPTED_EXIT_CODE
+            except BaseException:  # re-raised: only drops the queued pages before the crash
+                # Leaving the `with` would otherwise process every remaining page first.
+                executor.shutdown(wait=True, cancel_futures=True)
+                raise
     finally:
         listener.stop()
+        log_queue.close()
 
     if progress.failed:
         logger.warning("%s of %s page(s) failed to upscale", progress.failed, progress.total)

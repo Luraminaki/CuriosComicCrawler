@@ -72,3 +72,71 @@ def test_build_and_upscale_produces_4x_output(model: OnnxModelName) -> None:
 
     assert result.shape == (32, 48, 3)
     assert result.dtype == np.uint8
+
+
+class _FixedOutputSession:
+    """Stands in for an `InferenceSession`, returning a fixed model output."""
+
+    def __init__(self, output: np.ndarray) -> None:
+        """Set the output.
+
+        Args:
+            output: `(1, 3, H, W)` float32 RGB, as the model returns it.
+        """
+        self.output: np.ndarray = output
+
+    def run(self, *_args: object) -> list[np.ndarray]:
+        """Return the fixed output.
+
+        Returns:
+            A one-element list, like ONNX Runtime.
+        """
+        return [self.output.copy()]
+
+
+def _engine_returning(output: np.ndarray) -> sr_engine_onnx.OnnxEngine:
+    """Build the light model's engine, then make it return `output` whatever the input.
+
+    Args:
+        output: The model output to return.
+
+    Returns:
+        The engine.
+    """
+    engine_init = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model="realesr-animevideov3-x4"))
+    engine = sr_engine_onnx.OnnxEngine(engine_init, worker_count=1)
+    engine._session = _FixedOutputSession(output)  # pyright: ignore[reportAttributeAccessIssue]
+    return engine
+
+
+def test_output_is_converted_back_to_bgr() -> None:
+    """The model's RGB planes come back in OpenCV's BGR order."""
+    rgb = np.zeros((1, 3, 2, 2), dtype=np.float32)
+    rgb[0, 2] = 1.0  # pure blue
+    result = _engine_returning(rgb).upscale(np.zeros((2, 2, 3), dtype=np.uint8))
+
+    assert result.shape == (2, 2, 3)
+    assert result.dtype == np.uint8
+    assert result[0, 0].tolist() == [255, 0, 0]
+
+
+def test_output_outside_the_unit_range_saturates() -> None:
+    """Overshoot, however far, clamps to black or white instead of wrapping around."""
+    values = np.array([-1e9, -0.3, 0.0, 0.5, 1.0, 1.2, 1e9], dtype=np.float32)
+    output = np.broadcast_to(values, (1, 3, 1, values.size)).copy()
+    result = _engine_returning(output).upscale(np.zeros((1, values.size, 3), dtype=np.uint8))
+
+    # 0.5 * 255 is a rounding tie: 127 or 128 are both right.
+    assert result[0, :, 0].tolist() in (
+        [0, 0, 0, 128, 255, 255, 255],
+        [0, 0, 0, 127, 255, 255, 255],
+    )
+
+
+def test_output_matches_the_reference_conversion_within_rounding() -> None:
+    """Same pixels as the plain float conversion (scale, clip, round to nearest)."""
+    output = np.random.default_rng(0).uniform(-0.2, 1.2, size=(1, 3, 16, 16)).astype(np.float32)
+    reference = np.rint(np.clip(output[0] * 255.0, 0, 255)).astype(np.uint8).transpose(1, 2, 0)
+    result = _engine_returning(output).upscale(np.zeros((16, 16, 3), dtype=np.uint8))
+
+    assert np.array_equal(result[..., ::-1], reference)
