@@ -31,7 +31,16 @@ def test_missing_required_field_is_rejected(valid_config_dict: dict) -> None:
         _ = AppConfig.model_validate(valid_config_dict)
 
 
-@pytest.mark.parametrize("bad_root_site", ["ftp://example.com/", "https://example.com"])
+@pytest.mark.parametrize(
+    "bad_root_site",
+    [
+        "ftp://example.com/",
+        "https://example.com",
+        "httpfoo-not-a-url/",
+        "https:///",
+        "example.com/",
+    ],
+)
 def test_root_site_must_be_http_with_trailing_slash(
     valid_config_dict: dict, bad_root_site: str
 ) -> None:
@@ -133,3 +142,22 @@ def test_load_config_reads_and_validates(tmp_path: pathlib.Path, valid_config_di
     config = load_config(config_path)
 
     assert config.bd_name == "SA"
+
+
+@pytest.mark.parametrize("bad_variant", ["../../escape", "sub/dir", "sub\\dir", ""])
+def test_filename_variants_must_stay_inside_a_filename(
+    valid_config_dict: dict, bad_variant: str
+) -> None:
+    """A variant with a path separator would save pages outside the download folder."""
+    valid_config_dict["filename_variants"] = ["small", bad_variant]
+
+    with pytest.raises(ValidationError, match="filename_variants"):
+        _ = AppConfig.model_validate(valid_config_dict)
+
+
+@pytest.mark.parametrize("root_site", ["http://example.com/", "https://example.com/comics/"])
+def test_http_and_https_root_sites_are_accepted(valid_config_dict: dict, root_site: str) -> None:
+    """Both schemes, with or without a path, are valid sites."""
+    valid_config_dict["root_site"] = root_site
+
+    assert AppConfig.model_validate(valid_config_dict).root_site == root_site

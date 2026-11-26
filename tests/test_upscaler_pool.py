@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from curios_comic_crawler import upscaler
+from curios_comic_crawler._exit_codes import INTERRUPTED_EXIT_CODE
 
 if TYPE_CHECKING:
     import pathlib
@@ -184,7 +185,7 @@ def test_ctrl_c_returns_130_and_reports_written_and_cancelled(
 
     monkeypatch.setattr(upscaler, "_collect", interrupted)
 
-    assert upscaler.run(pages) == upscaler.INTERRUPTED_EXIT_CODE
+    assert upscaler.run(pages) == INTERRUPTED_EXIT_CODE
     assert executor.shutdowns[0] == {"wait": True, "cancel_futures": True}
     assert "1 page(s) written, 2 cancelled" in caplog.text
 

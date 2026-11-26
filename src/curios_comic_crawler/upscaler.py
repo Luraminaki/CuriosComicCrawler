@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import cv2
 
+from curios_comic_crawler._exit_codes import INTERRUPTED_EXIT_CODE
 from curios_comic_crawler._worker_threads import available_cpus, threads_per_worker
 from curios_comic_crawler.image_ops import area_posterise, sharpen_image
 from curios_comic_crawler.sr_engine import build_engine, prepare_engine
@@ -35,7 +36,6 @@ logger = logging.getLogger(__name__)
 # every physical core through ONNX Runtime / OpenCV threads. More workers gain little
 # (measured: 2 workers ~13% faster on the light model) for that much more memory.
 DEFAULT_WORKERS = 1
-INTERRUPTED_EXIT_CODE = 130  # the shell convention for "stopped by SIGINT"
 # What a single page can fail with: unreadable or unwritable file, undecodable image, engine
 # failure (RuntimeError, see sr_engine_onnx), or OpenCV refusing the data.
 _PAGE_ERRORS = (OSError, ValueError, RuntimeError, cv2.error)

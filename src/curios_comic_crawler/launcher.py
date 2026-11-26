@@ -9,7 +9,7 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from curios_comic_crawler import downloader, upscaler
+from curios_comic_crawler import downloader
 
 if TYPE_CHECKING:
     import argparse
@@ -114,6 +114,9 @@ def run(config: "AppConfig", args: "argparse.Namespace") -> int:
         exit_code = max(exit_code, downloader.run(config, force=force_download))
 
     if mode in ("upscale", "both"):
+        # Imported here: cv2 and ONNX Runtime cost ~94 MiB that a download-only run never uses.
+        from curios_comic_crawler import upscaler  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
         logger.info("Running upscaler (force=%s)", force_upscale)
         exit_code = max(exit_code, upscaler.run(config, force=force_upscale))
 

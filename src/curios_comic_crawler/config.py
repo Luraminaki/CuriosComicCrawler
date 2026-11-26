@@ -6,6 +6,7 @@ Replaces raw `dict` access into a parsed `config.json` with a validated pydantic
 
 import json
 import pathlib
+import urllib.parse
 from typing import TYPE_CHECKING, Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -16,6 +17,7 @@ from curios_comic_crawler.models import ModelName, OnnxModelName, PosteriseMetho
 if TYPE_CHECKING:
     from pydantic import ValidationInfo
 
+_PATH_SEPARATORS = ("/", "\\")
 _WINDOWS_RESERVED_NAMES = frozenset(
     {
         "CON",
@@ -150,7 +152,7 @@ class AppConfig(BaseModel):
         Raises:
             ValueError: If it's empty, `.`/`..`, contains a separator, or is reserved on Windows.
         """
-        if not value or value in (".", "..") or any(sep in value for sep in ("/", "\\")):
+        if not value or value in (".", "..") or any(sep in value for sep in _PATH_SEPARATORS):
             raise ValueError(f"BD_name must be a single path segment, not {value!r}")
         if value.upper() in _WINDOWS_RESERVED_NAMES:
             raise ValueError(f"BD_name {value!r} is a reserved Windows device name")
@@ -195,21 +197,47 @@ class AppConfig(BaseModel):
             raise ValueError(f'{info.field_name} must not contain ".." path segments: {value!r}')
         return value
 
-    @model_validator(mode="after")
-    def _check_root_site(self) -> "AppConfig":
-        """Require an http(s) URL ending in "/" (page filenames are appended to it).
+    @field_validator("root_site")
+    @classmethod
+    def _check_root_site(cls, value: str) -> str:
+        """Require an http(s) URL with a host, ending in "/" (page filenames are appended to it).
+
+        Args:
+            value (str): The `root_site` value.
 
         Returns:
-            AppConfig: This config, unchanged.
+            str: `value`, unchanged.
 
         Raises:
-            ValueError: If `root_site` doesn't start with "http" or end with "/".
+            ValueError: If it isn't an http(s) URL with a host, or doesn't end with "/".
         """
-        if not self.root_site.startswith("http"):
-            raise ValueError(f'root_site must start with "http": {self.root_site!r}')
-        if not self.root_site.endswith("/"):
-            raise ValueError(f'root_site must end with "/": {self.root_site!r}')
-        return self
+        url = urllib.parse.urlsplit(value)
+        if url.scheme not in ("http", "https") or not url.netloc:
+            raise ValueError(f"root_site must be an http(s) URL with a host: {value!r}")
+        if not value.endswith("/"):
+            raise ValueError(f'root_site must end with "/": {value!r}')
+        return value
+
+    @field_validator("filename_variants")
+    @classmethod
+    def _check_filename_variants(cls, value: list[str]) -> list[str]:
+        """Keep each variant inside a filename, so pages are saved in the download folder.
+
+        Args:
+            value (list[str]): The `filename_variants` value.
+
+        Returns:
+            list[str]: `value`, unchanged.
+
+        Raises:
+            ValueError: If a variant is empty or contains a path separator.
+        """
+        for variant in value:
+            if not variant or any(sep in variant for sep in _PATH_SEPARATORS):
+                raise ValueError(
+                    f"each filename_variants entry must be a non-empty filename part: {variant!r}"
+                )
+        return value
 
     def _under_data(self, *parts: str) -> pathlib.Path:
         """Build a path inside `folder_data`.

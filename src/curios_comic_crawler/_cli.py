@@ -8,6 +8,7 @@ import time
 from typing import TYPE_CHECKING
 
 from curios_comic_crawler import __version__
+from curios_comic_crawler._exit_codes import INTERRUPTED_EXIT_CODE
 from curios_comic_crawler.config import load_config
 from curios_comic_crawler.logging_utils import configure_launcher_logging
 
@@ -35,7 +36,8 @@ def main(
             Defaults to None.
 
     Returns:
-        int: Process exit code: `run`'s own code, or 1 on a configuration error or crash.
+        int: Process exit code: `run`'s own code, 1 on a configuration error or crash, 130 if
+        interrupted (Ctrl+C).
     """
     # Parsed before logging is configured, so `--help`/bad arguments exit cleanly without
     # creating a log file.
@@ -69,6 +71,9 @@ def main(
     exit_code = 0
     try:
         exit_code = run(config, args)
+    except KeyboardInterrupt:  # Ctrl+C during a download or a prompt: no traceback
+        logger.warning("Interrupted")
+        exit_code = INTERRUPTED_EXIT_CODE
     except Exception:  # pylint: disable=broad-exception-caught  # top-level crash handler
         logger.exception("%s crashed", script_name)
         exit_code = 1
