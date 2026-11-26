@@ -12,7 +12,12 @@ if TYPE_CHECKING:
 
 
 def _configure_parser(parser: "argparse.ArgumentParser") -> None:
-    parser.add_argument(
+    """Add the download command's own options.
+
+    Args:
+        parser (argparse.ArgumentParser): The command's parser.
+    """
+    _ = parser.add_argument(
         "--force",
         action="store_true",
         help="Re-download every page, ignoring what is already saved.",

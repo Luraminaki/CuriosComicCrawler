@@ -35,6 +35,19 @@ def _spec(  # noqa: PLR0913, PLR0917  # pylint: disable=too-many-arguments,too-m
     algorithm: str,
     sha256: str,
 ) -> ModelSpec:
+    """Build one manifest entry.
+
+    Args:
+        name (ModelName): Model name, as used in the config.
+        scale (int): Upscale factor.
+        filename (str): File name in the models folder.
+        url (str): Download URL.
+        algorithm (str): OpenCV `dnn_superres` algorithm name.
+        sha256 (str): Expected SHA-256 of the file.
+
+    Returns:
+        ModelSpec: The entry.
+    """
     return ModelSpec(
         name=name,
         scale=scale,

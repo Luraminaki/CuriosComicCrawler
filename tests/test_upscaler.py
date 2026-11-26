@@ -6,28 +6,51 @@ them; a real super-resolution model actually producing correct pixels is still o
 manual end-to-end runs.
 """
 
+# pylint: disable=protected-access  # unit tests exercise the module's private helpers
+
 import logging
+import multiprocessing
 import pathlib
-import queue
 import signal
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 import pytest
 
 from curios_comic_crawler import upscaler
+from curios_comic_crawler.sr_engine_opencv import OpenCVEngineInit
+
+if TYPE_CHECKING:
+    from multiprocessing.queues import Queue
+
+    from curios_comic_crawler.config import AppConfig
 
 
 class _IdentityEngine:
     """A no-op `SREngine` stand-in: returns the image unchanged."""
 
     def upscale(self, image: np.ndarray) -> np.ndarray:
+        """Return `image` unchanged.
+
+        Args:
+            image: The page.
+
+        Returns:
+            The same page.
+        """
         return image
 
 
 def _write_test_image(path: pathlib.Path, size: tuple[int, int] = (8, 8)) -> None:
+    """Write a random (reproducible) colour image.
+
+    Args:
+        path: Where to write it.
+        size: Its height and width.
+    """
     image = np.random.default_rng(0).integers(0, 256, size=(*size, 3), dtype=np.uint8)
-    cv2.imwrite(str(path), image)
+    _ = cv2.imwrite(str(path), image)
 
 
 def test_select_remaining_without_force_skips_completed() -> None:
@@ -89,22 +112,22 @@ def test_format_duration_clamps_negative_to_zero() -> None:
     assert upscaler._format_duration(-5) == "0d - 0h:0m:0s"
 
 
-def test_run_returns_success_when_nothing_to_upscale(config) -> None:
+def test_run_returns_success_when_nothing_to_upscale(config: "AppConfig") -> None:
     """Nothing to upscale is a success."""
     assert upscaler.run(config) == 0
 
 
 def test_eta_divides_by_full_worker_count_while_a_queue_remains() -> None:
-    # 10 pages left, 4 workers still have queued work waiting behind them.
     """While pages wait in the queue, all workers share the remaining time."""
+    # 10 pages left, 4 workers still have queued work waiting behind them.
     assert (
         upscaler._estimate_eta_seconds(avg_per_page=2.0, remaining_count=10, worker_count=4) == 5.0
     )
 
 
 def test_eta_does_not_shrink_below_one_round_in_the_tail() -> None:
-    # Every remaining page is already running concurrently -- no more queue to divide away.
     """The last pages, all running at once, still take one page's time."""
+    # Every remaining page is already running concurrently -- no more queue to divide away.
     for remaining_count in (1, 2, 3, 4):
         eta = upscaler._estimate_eta_seconds(
             avg_per_page=2.0, remaining_count=remaining_count, worker_count=4
@@ -146,7 +169,7 @@ def test_process_one_raises_when_engine_not_initialized(
     _write_test_image(img_path)
 
     with pytest.raises(RuntimeError, match="not initialized"):
-        upscaler._process_one(img_path, tmp_path, gray_values=4)
+        _ = upscaler._process_one(img_path, tmp_path, gray_values=4)
 
 
 def test_process_one_raises_on_missing_or_corrupt_image(
@@ -156,10 +179,10 @@ def test_process_one_raises_on_missing_or_corrupt_image(
     """An unreadable image raises `ValueError`."""
     monkeypatch.setattr(upscaler, "_worker_engine", _IdentityEngine())
     bad_path = tmp_path / "not_an_image.jpg"
-    bad_path.write_bytes(b"not actually an image")
+    _ = bad_path.write_bytes(b"not actually an image")
 
     with pytest.raises(ValueError, match="Failed to read image"):
-        upscaler._process_one(bad_path, tmp_path, gray_values=4)
+        _ = upscaler._process_one(bad_path, tmp_path, gray_values=4)
 
 
 def test_unencodable_page_fails_and_leaves_no_file(
@@ -171,10 +194,10 @@ def test_unencodable_page_fails_and_leaves_no_file(
     _write_test_image(img_path)
     out_dir = tmp_path / "out"
     out_dir.mkdir()
-    monkeypatch.setattr(upscaler.cv2, "imencode", lambda *_a, **_k: (False, None))
+    monkeypatch.setattr(cv2, "imencode", lambda *_a, **_k: (False, None))
 
     with pytest.raises(ValueError, match="can't encode"):
-        upscaler._process_one(img_path, out_dir, gray_values=4)
+        _ = upscaler._process_one(img_path, out_dir, gray_values=4)
     assert list(out_dir.iterdir()) == []
 
 
@@ -185,6 +208,12 @@ def test_failed_write_never_leaves_a_truncated_page(
     out_path = tmp_path / "page.jpg"
 
     def fail_after_partial_write(self: pathlib.Path, data: bytes) -> int:
+        """Write part of the file, then fail like a full disk.
+
+        Raises:
+            OSError: Always.
+        """
+        del data
         _ = pathlib.Path.write_text(self, "partial", encoding="utf-8")
         raise OSError("disk full")
 
@@ -199,15 +228,19 @@ def test_failed_write_never_leaves_a_truncated_page(
 def test_init_worker_sets_engine_and_caps_cv2_threads(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each worker builds its engine and caps OpenCV's threads to its share."""
     captured: dict[str, int] = {}
-    monkeypatch.setattr(upscaler.cv2, "setNumThreads", lambda n: captured.setdefault("n", n))
+    monkeypatch.setattr(cv2, "setNumThreads", lambda n: captured.setdefault("n", n))
     monkeypatch.setattr(upscaler, "threads_per_worker", lambda _worker_count: 3)
     monkeypatch.setattr(
         upscaler, "build_engine", lambda _engine_init, _worker_count: _IdentityEngine()
     )
 
+    log_queue: Queue[logging.LogRecord] = multiprocessing.Queue()
     try:
         upscaler._init_worker(
-            engine_init=object(), worker_count=2, log_queue=queue.SimpleQueue(), level=20
+            engine_init=OpenCVEngineInit(pathlib.Path("unused.pb"), "edsr", 3),
+            worker_count=2,
+            log_queue=log_queue,
+            level=20,
         )
 
         assert captured["n"] == 3
@@ -217,3 +250,4 @@ def test_init_worker_sets_engine_and_caps_cv2_threads(monkeypatch: pytest.Monkey
         upscaler._worker_engine = None
         _ = signal.signal(signal.SIGINT, signal.default_int_handler)
         logging.getLogger().handlers.clear()
+        log_queue.close()

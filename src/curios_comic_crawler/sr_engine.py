@@ -4,14 +4,16 @@
 `upscaler.py` only ever talks to the `SREngine` protocol below; which concrete implementation
 backs it (OpenCV's classic photo-trained models, or the bundled ONNX Runtime model tuned for
 illustration/anime art) is decided by `AppConfig.upscaler`. Adding a third engine means
-implementing `SREngine` plus a `prepare()`/`build()` pair in a new module, and adding one member
-to the `UpscaleConfig` union in `config.py` -- nothing here or in `upscaler.py` needs to change.
+implementing `SREngine` and a `prepare()` function in a new module, adding its config to the
+`UpscaleConfig` union in `config.py`, its init type to `EngineInit`, and one case to each
+`match` below (basedpyright's exhaustiveness check flags a missing one); `upscaler.py` doesn't
+change.
 
-The `prepare()`/`build()` split exists because engine setup that needs network I/O (the OpenCV
-engine's model download+integrity check) must happen exactly once, in the main process, before
-worker processes are forked -- not once per worker. `prepare_engine()` runs in the main process
-and returns a small picklable value; `build_engine()` runs inside each worker (called from
-`upscaler._init_worker`) and turns that value into a live engine instance.
+The `prepare_engine()`/`build_engine()` split exists because engine setup that needs network I/O
+(the OpenCV engine's model download+integrity check) must happen exactly once, in the main
+process, before worker processes are forked -- not once per worker. `prepare_engine()` runs in
+the main process and returns a small picklable value; `build_engine()` runs inside each worker
+(called from `upscaler._init_worker`) and turns that value into a live engine instance.
 """
 
 from typing import TYPE_CHECKING, Protocol
@@ -53,12 +55,11 @@ def prepare_engine(config: "AppConfig") -> EngineInit:
     Returns:
         EngineInit: Picklable data to pass to `build_engine` in each worker process.
     """
-    upscaler_config = config.upscaler
-    if isinstance(upscaler_config, OpenCVUpscaleConfig):
-        return sr_engine_opencv.prepare(upscaler_config, config.models_dir)
-    if isinstance(upscaler_config, OnnxUpscaleConfig):
-        return sr_engine_onnx.prepare(upscaler_config)
-    raise RuntimeError(f"Unhandled upscaler config: {upscaler_config!r}")  # pragma: no cover
+    match config.upscaler:
+        case OpenCVUpscaleConfig() as upscaler_config:
+            return sr_engine_opencv.prepare(upscaler_config, config.models_dir)
+        case OnnxUpscaleConfig() as upscaler_config:
+            return sr_engine_onnx.prepare(upscaler_config)
 
 
 def build_engine(engine_init: EngineInit, worker_count: int) -> SREngine:
@@ -67,14 +68,14 @@ def build_engine(engine_init: EngineInit, worker_count: int) -> SREngine:
     Args:
         engine_init (EngineInit): This engine's `prepare_engine()` output.
         worker_count (int): Number of worker processes running concurrently (only meaningful
-            to engines that need to divide CPU resources between them, e.g. OpenCV's thread
-            pool).
+            to engines that divide CPU threads between them, e.g. the onnx engine's intra-op
+            threads).
 
     Returns:
         SREngine: A ready-to-use engine instance, local to the calling worker process.
     """
-    if isinstance(engine_init, sr_engine_opencv.OpenCVEngineInit):
-        return sr_engine_opencv.build(engine_init)
-    if isinstance(engine_init, sr_engine_onnx.OnnxEngineInit):
-        return sr_engine_onnx.build(engine_init, worker_count)
-    raise RuntimeError(f"Unhandled engine init: {engine_init!r}")  # pragma: no cover
+    match engine_init:
+        case sr_engine_opencv.OpenCVEngineInit():
+            return sr_engine_opencv.OpenCVEngine(engine_init)
+        case sr_engine_onnx.OnnxEngineInit():
+            return sr_engine_onnx.OnnxEngine(engine_init, worker_count)

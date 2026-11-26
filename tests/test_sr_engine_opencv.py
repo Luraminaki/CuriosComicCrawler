@@ -44,6 +44,11 @@ def test_prepare_passes_models_dir_and_config_through_to_ensure_model(
     def _fake_ensure_model(
         models_dir: "pathlib.Path", model_name: str, model_scale: int
     ) -> "pathlib.Path":
+        """Record the arguments instead of downloading.
+
+        Returns:
+            A fixed model path.
+        """
         captured["models_dir"] = models_dir
         captured["model_name"] = model_name
         captured["model_scale"] = model_scale

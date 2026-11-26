@@ -16,19 +16,45 @@ if TYPE_CHECKING:
 
 
 class _FakeStreamResponse:
+    """A successful streaming response with a fixed body."""
+
     def __init__(self, content: bytes) -> None:
-        self._content = content
+        """Set the body.
+
+        Args:
+            content: Body.
+        """
+        self._content: bytes = content
 
     def __enter__(self) -> "_FakeStreamResponse":
+        """Enter the `with` block.
+
+        Returns:
+            The response.
+        """
         return self
 
     def __exit__(self, *_exc_info: object) -> bool:
+        """Leave the `with` block, not swallowing errors.
+
+        Returns:
+            False.
+        """
         return False
 
     def raise_for_status(self) -> None:
-        pass
+        """Succeed: the status is always 200."""
 
-    def iter_content(self, chunk_size: int) -> object:
+    def iter_content(self, chunk_size: int) -> "Iterator[bytes]":
+        """Yield the body in one chunk.
+
+        Args:
+            chunk_size: Ignored.
+
+        Yields:
+            The body.
+        """
+        del chunk_size
         yield self._content
 
 
@@ -78,7 +104,7 @@ def test_ensure_model_downloads_and_verifies_when_missing(
         sha256=hashlib.sha256(content).hexdigest(),
     )
     monkeypatch.setitem(model_registry.MODEL_MANIFEST, ("edsr", 99), spec)
-    monkeypatch.setattr(_http.requests, "get", lambda *_a, **_k: _FakeStreamResponse(content))
+    monkeypatch.setattr(requests, "get", lambda *_a, **_k: _FakeStreamResponse(content))
 
     result = model_registry.ensure_model(tmp_path, "edsr", 99)
 
@@ -101,13 +127,13 @@ def test_ensure_model_raises_and_cleans_up_on_hash_mismatch(
     )
     monkeypatch.setitem(model_registry.MODEL_MANIFEST, ("edsr", 98), spec)
     monkeypatch.setattr(
-        _http.requests,
+        requests,
         "get",
         lambda *_a, **_k: _FakeStreamResponse(b"not matching content"),
     )
 
     with pytest.raises(ValueError, match="integrity check"):
-        model_registry.ensure_model(tmp_path, "edsr", 98)
+        _ = model_registry.ensure_model(tmp_path, "edsr", 98)
 
     assert list(tmp_path.iterdir()) == []  # neither the model nor a temporary file
 
@@ -127,8 +153,8 @@ def test_ensure_model_redownloads_corrupted_cache(
         sha256=hashlib.sha256(good_content).hexdigest(),
     )
     monkeypatch.setitem(model_registry.MODEL_MANIFEST, ("edsr", 97), spec)
-    (tmp_path / "CACHE_x97.pb").write_bytes(b"corrupted")
-    monkeypatch.setattr(_http.requests, "get", lambda *_a, **_k: _FakeStreamResponse(good_content))
+    _ = (tmp_path / "CACHE_x97.pb").write_bytes(b"corrupted")
+    monkeypatch.setattr(requests, "get", lambda *_a, **_k: _FakeStreamResponse(good_content))
 
     result = model_registry.ensure_model(tmp_path, "edsr", 97)
 
@@ -151,12 +177,17 @@ def test_ensure_model_reuses_valid_cache_without_network(
     )
     monkeypatch.setitem(model_registry.MODEL_MANIFEST, ("edsr", 96), spec)
     target = tmp_path / "VALID_x96.pb"
-    target.write_bytes(good_content)
+    _ = target.write_bytes(good_content)
 
     def _fail(*_args: object, **_kwargs: object) -> None:
+        """Fail the test: a valid cached model must not be downloaded again.
+
+        Raises:
+            AssertionError: Always.
+        """
         raise AssertionError("network should not be used for a valid cached file")
 
-    monkeypatch.setattr(_http.requests, "get", _fail)
+    monkeypatch.setattr(requests, "get", _fail)
 
     assert model_registry.ensure_model(tmp_path, "edsr", 96) == target
 
@@ -167,12 +198,25 @@ def test_interrupted_download_leaves_no_temporary_file(
     """A connection dropped mid-download leaves nothing behind (it used to leave `.part`)."""
 
     class _DroppingResponse(_FakeStreamResponse):
+        """A response whose connection drops after the first chunk."""
+
         def iter_content(self, chunk_size: int) -> "Iterator[bytes]":
+            """Yield a partial body, then drop the connection.
+
+            Args:
+                chunk_size: Ignored.
+
+            Yields:
+                The partial body.
+
+            Raises:
+                requests.ConnectionError: After the first chunk.
+            """
             del chunk_size
             yield b"partial"
             raise requests.ConnectionError("dropped")
 
-    monkeypatch.setattr(_http.requests, "get", lambda *_a, **_k: _DroppingResponse(b""))
+    monkeypatch.setattr(requests, "get", lambda *_a, **_k: _DroppingResponse(b""))
 
     with pytest.raises(requests.ConnectionError):
         _http.download_verified("https://x/m.pb", tmp_path / "m.pb", "0" * 64)

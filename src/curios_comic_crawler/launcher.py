@@ -6,6 +6,7 @@ when `--mode` is given -- the latter is meant for cron jobs / scripted re-runs.
 """
 
 import logging
+import sys
 from typing import TYPE_CHECKING
 
 from curios_comic_crawler import downloader, upscaler
@@ -45,14 +46,19 @@ def configure_parser(parser: "argparse.ArgumentParser") -> None:
 
 
 def _prompt_mode() -> str:
+    """Ask which steps to run until a valid choice is typed.
+
+    Returns:
+        str: `"download"`, `"upscale"` or `"both"`.
+    """
     while True:
         answer = (
             input(
                 "What do you want to run?\n"
-                "  d) Download\n"
-                "  u) Upscale\n"
-                "  b) Both (download then upscale)\n"
-                "> ",
+                + "  d) Download\n"
+                + "  u) Upscale\n"
+                + "  b) Both (download then upscale)\n"
+                + "> ",
             )
             .strip()
             .lower()
@@ -63,6 +69,14 @@ def _prompt_mode() -> str:
 
 
 def _prompt_yes_no(prompt: str) -> bool:
+    """Ask a yes/no question (no by default).
+
+    Args:
+        prompt (str): The question.
+
+    Returns:
+        bool: True for "y" or "yes".
+    """
     return input(f"{prompt} [y/N] ").strip().lower() in ("y", "yes")
 
 
@@ -75,17 +89,22 @@ def run(config: "AppConfig", args: "argparse.Namespace") -> int:
             `force_upscale` -- see `configure_parser`).
 
     Returns:
-        int: 0 on success, non-zero if any step fails.
+        int: 0 on success, the failing step's code otherwise (1, or 130 if interrupted), 2 if
+        `--mode` is missing and there is no terminal to ask from.
     """
     mode = args.mode
     force_download = args.force_download
     force_upscale = args.force_upscale
 
     if mode is None:
+        if not sys.stdin.isatty():  # cron, pipes: nobody to answer the questions
+            logger.error("No --mode given and no terminal to ask from: pass --mode")
+            return 2
         mode = _prompt_mode()
-        if mode in ("download", "both"):
+        # A --force-* flag given on the command line answers its own question.
+        if mode in ("download", "both") and not force_download:
             force_download = _prompt_yes_no("Force re-download of every page?")
-        if mode in ("upscale", "both"):
+        if mode in ("upscale", "both") and not force_upscale:
             force_upscale = _prompt_yes_no("Force re-upscale of every downloaded page?")
 
     exit_code = 0

@@ -6,9 +6,9 @@ Replaces raw `dict` access into a parsed `config.json` with a validated pydantic
 
 import json
 import pathlib
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, ClassVar, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from curios_comic_crawler.model_registry import MODEL_MANIFEST
 from curios_comic_crawler.models import ModelName, OnnxModelName, PosteriseMethod
@@ -42,13 +42,22 @@ class OpenCVUpscaleConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_model_combo(self) -> "OpenCVUpscaleConfig":
+        """Require a (model name, scale) pair that has a downloadable model.
+
+        Returns:
+            OpenCVUpscaleConfig: This config, unchanged.
+
+        Raises:
+            ValueError: If no model exists for the pair; the message lists the name's known scales.
+        """
         if (self.model_name, self.model_scale) not in MODEL_MANIFEST:
             known_scales = sorted(
                 scale for name, scale in MODEL_MANIFEST if name == self.model_name
             )
             raise ValueError(
-                f"No known model for model_name={self.model_name!r}, model_scale={self.model_scale!r}. "
-                f"Known scales for {self.model_name!r}: {known_scales}"
+                f"No known model for model_name={self.model_name!r}, "
+                + f"model_scale={self.model_scale!r}. Known scales for {self.model_name!r}: "
+                + f"{known_scales}"
             )
         return self
 
@@ -125,11 +134,22 @@ class AppConfig(BaseModel):
     headers: dict[str, str]
     upscale_workers: int | None = Field(default=None, ge=1)
 
-    model_config = {"populate_by_name": True}
+    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)
 
     @field_validator("bd_name")
     @classmethod
     def _check_bd_name(cls, value: str) -> str:
+        """Require a single, portable path segment (it names the saved files).
+
+        Args:
+            value (str): The `BD_name` value.
+
+        Returns:
+            str: `value`, unchanged.
+
+        Raises:
+            ValueError: If it's empty, `.`/`..`, contains a separator, or is reserved on Windows.
+        """
         if not value or value in (".", "..") or any(sep in value for sep in ("/", "\\")):
             raise ValueError(f"BD_name must be a single path segment, not {value!r}")
         if value.upper() in _WINDOWS_RESERVED_NAMES:
@@ -139,6 +159,17 @@ class AppConfig(BaseModel):
     @field_validator("ext")
     @classmethod
     def _check_ext(cls, value: str) -> str:
+        """Require the leading dot that filenames are built with.
+
+        Args:
+            value (str): The `ext` value.
+
+        Returns:
+            str: `value`, unchanged.
+
+        Raises:
+            ValueError: If it doesn't start with `.`.
+        """
         if not value.startswith("."):
             raise ValueError(f"ext must start with a leading dot, not {value!r}")
         return value
@@ -146,6 +177,18 @@ class AppConfig(BaseModel):
     @field_validator("folder_data", "folder_save_dl", "folder_save_upscale", "folder_models")
     @classmethod
     def _check_data_folder(cls, value: str, info: "ValidationInfo") -> str:
+        """Keep data folders non-empty and inside the folder they're joined to.
+
+        Args:
+            value (str): The folder setting.
+            info (ValidationInfo): Which field is being validated (for the message).
+
+        Returns:
+            str: `value`, unchanged.
+
+        Raises:
+            ValueError: If it's empty or contains a `..` segment.
+        """
         if not value:
             raise ValueError(f"{info.field_name} must not be empty")
         if ".." in pathlib.PurePath(value).parts:
@@ -154,6 +197,14 @@ class AppConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_root_site(self) -> "AppConfig":
+        """Require an http(s) URL ending in "/" (page filenames are appended to it).
+
+        Returns:
+            AppConfig: This config, unchanged.
+
+        Raises:
+            ValueError: If `root_site` doesn't start with "http" or end with "/".
+        """
         if not self.root_site.startswith("http"):
             raise ValueError(f'root_site must start with "http": {self.root_site!r}')
         if not self.root_site.endswith("/"):
@@ -161,6 +212,14 @@ class AppConfig(BaseModel):
         return self
 
     def _under_data(self, *parts: str) -> pathlib.Path:
+        """Build a path inside `folder_data`.
+
+        Args:
+            *parts (str): Path segments under it.
+
+        Returns:
+            pathlib.Path: The joined path.
+        """
         return pathlib.Path(self.folder_data).joinpath(*parts)
 
     @property

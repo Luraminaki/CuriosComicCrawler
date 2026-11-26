@@ -4,6 +4,8 @@
 against the real engine -- no mocking needed, unlike the ncnn engine this replaced.
 """
 
+# pylint: disable=protected-access  # unit tests exercise the module's private helpers
+
 from typing import get_args
 
 import numpy as np
@@ -56,14 +58,14 @@ def test_prepare_raises_if_asset_missing(monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
     with pytest.raises(FileNotFoundError):
-        sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model="realesr-animevideov3-x4"))
+        _ = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model="realesr-animevideov3-x4"))
 
 
 @pytest.mark.parametrize("model", get_args(OnnxModelName))
 def test_build_and_upscale_produces_4x_output(model: OnnxModelName) -> None:
     """Each bundled model upscales an image by 4 in both dimensions."""
     engine_init = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model=model))
-    engine = sr_engine_onnx.build(engine_init, worker_count=1)
+    engine = sr_engine_onnx.OnnxEngine(engine_init, worker_count=1)
 
     image = np.random.default_rng(0).integers(0, 256, size=(8, 12, 3), dtype=np.uint8)
     result = engine.upscale(image)

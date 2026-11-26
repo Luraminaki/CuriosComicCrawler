@@ -7,11 +7,10 @@ import pathlib
 import re
 from logging.handlers import RotatingFileHandler
 
-from curios_comic_crawler import logreset
-
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 _DEFAULT_BACKUP_COUNT = 5
 _DEFAULT_MAX_RUNS = 10
+_FORMAT = "[%(asctime)s] [%(process)s] [%(name)s] [%(levelname)s]: %(funcName)s -- %(message)s"
 
 
 def _prune_old_runs(log_dir: pathlib.Path, log_file_stem: str, max_runs: int) -> None:
@@ -75,8 +74,6 @@ def configure_launcher_logging(
         max_runs (int, optional): Number of past process runs' log file sets to keep before
             older ones are deleted. Defaults to 10.
     """
-    logreset.reset_logging()
-
     log_dir = log_dir or pathlib.Path.cwd()
     log_dir.mkdir(parents=True, exist_ok=True)
     _prune_old_runs(log_dir, log_file_stem, max_runs)
@@ -85,11 +82,12 @@ def configure_launcher_logging(
     # `logging.basicConfig` docs), so no separate `logging.getLogger().setLevel(...)` is needed.
     logging.basicConfig(
         level=logging.INFO,
-        format="[%(asctime)s] [%(process)s] [%(name)s] [%(levelname)s]: %(funcName)s -- %(message)s",
+        format=_FORMAT,
         handlers=[
             RotatingFileHandler(
                 log_file, mode="a", maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
             ),
             logging.StreamHandler(),
         ],
+        force=True,  # replaces (and closes) any handlers configured before
     )

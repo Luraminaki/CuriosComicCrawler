@@ -1,6 +1,7 @@
 """Tests for `curios_comic_crawler.downloader`."""
 
-from typing import TYPE_CHECKING
+import time
+from typing import TYPE_CHECKING, final
 
 import pytest
 import requests
@@ -11,9 +12,12 @@ if TYPE_CHECKING:
     import pathlib
     from collections.abc import Iterator
 
+    from conftest import ConfigFactory
+
     from curios_comic_crawler.config import AppConfig
 
 
+@final
 class _FakeResponse:
     """A canned HTTP response, usable as a context manager like requests' own."""
 
@@ -72,6 +76,7 @@ class _FakeResponse:
             raise requests.ConnectionError("dropped mid-stream")
 
 
+@final
 class _FakeSession:
     """Serves scripted answers (responses, or exceptions to raise) in order."""
 
@@ -111,7 +116,7 @@ def fixture_no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
         The pauses requested, in seconds.
     """
     pauses: list[float] = []
-    monkeypatch.setattr(downloader.time, "sleep", pauses.append)
+    monkeypatch.setattr(time, "sleep", pauses.append)
     return pauses
 
 
@@ -128,12 +133,12 @@ def fetch(session: _FakeSession, save_path: "pathlib.Path") -> downloader.Fetch:
     return downloader.dl_and_save_img(session, "http://x/p.jpg", save_path)  # pyright: ignore[reportArgumentType]
 
 
-def test_get_last_saved_returns_zero_when_empty(config) -> None:
+def test_get_last_saved_returns_zero_when_empty(config: "AppConfig") -> None:
     """With no page downloaded yet, the last saved page is 0."""
     assert downloader.get_last_saved(config) == 0
 
 
-def test_get_last_saved_finds_highest_numeric_page(config) -> None:
+def test_get_last_saved_finds_highest_numeric_page(config: "AppConfig") -> None:
     """The last saved page is the highest page number on disk."""
     for name in ("SA_0001_small.jpg", "SA_0002_small.jpg", "SA_0010_small.jpg"):
         (config.dl_dir / name).touch()
@@ -141,7 +146,7 @@ def test_get_last_saved_finds_highest_numeric_page(config) -> None:
     assert downloader.get_last_saved(config) == 10
 
 
-def test_get_last_saved_skips_non_numeric_stem_segment(config) -> None:
+def test_get_last_saved_skips_non_numeric_stem_segment(config: "AppConfig") -> None:
     """Files whose page segment isn't a number are ignored."""
     (config.dl_dir / "SA_zzzz_small.jpg").touch()
     (config.dl_dir / "SA_0005_small.jpg").touch()
@@ -150,7 +155,7 @@ def test_get_last_saved_skips_non_numeric_stem_segment(config) -> None:
 
 
 def test_get_last_saved_handles_bd_name_with_underscore(
-    make_config, tmp_path: "pathlib.Path"
+    make_config: "ConfigFactory", tmp_path: "pathlib.Path"
 ) -> None:
     """A comic name containing `_` doesn't shift the page segment."""
     cfg = make_config(BD_name="my_comic", folder_data=str(tmp_path / "data") + "/")
@@ -161,7 +166,7 @@ def test_get_last_saved_handles_bd_name_with_underscore(
 
 
 def test_get_last_saved_not_fooled_by_lexicographic_order(
-    make_config, tmp_path: "pathlib.Path"
+    make_config: "ConfigFactory", tmp_path: "pathlib.Path"
 ) -> None:
     """Page 1000 beats page 999: numbers are compared, not names."""
     cfg = make_config(padded=3, folder_data=str(tmp_path / "data") + "/")
@@ -247,40 +252,50 @@ def test_run_stops_with_an_error_when_the_site_fails(
 
 
 def test_run_stops_one_page_past_the_last_real_page(
-    config, monkeypatch: "pytest.MonkeyPatch"
+    config: "AppConfig", monkeypatch: "pytest.MonkeyPatch"
 ) -> None:
     """The run stops right after a fully-missing page, never trying the next one.
 
     A missing page costs `fails` (2) attempts, matching the pre-refactor script's behavior.
     """
     monkeypatch.setattr(downloader, "get_last_saved", lambda *_a, **_k: 1283)
-    monkeypatch.setattr(downloader.time, "sleep", lambda *_a: None)
+    monkeypatch.setattr(time, "sleep", lambda *_a: None)
 
     attempted_pages = []
 
     def fake_dl(_session: object, _link: str, save_path: "pathlib.Path") -> downloader.Fetch:
+        """Record the page and answer as a site ending at the test's last page.
+
+        Returns:
+            The scripted outcome.
+        """
         page = int(save_path.name.split("_")[1])
         attempted_pages.append(page)
         return downloader.Fetch.SAVED if page <= 1285 else downloader.Fetch.MISSING
 
     monkeypatch.setattr(downloader, "dl_and_save_img", fake_dl)
 
-    downloader.run(config)
+    _ = downloader.run(config)
 
     assert max(attempted_pages) == 1286
 
 
 def test_run_does_not_terminate_permanently_after_one_early_transient_failure(
-    config,
+    config: "AppConfig",
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
     """The fail counter must reset on success, not accumulate over the whole run."""
     monkeypatch.setattr(downloader, "get_last_saved", lambda *_a, **_k: 0)
-    monkeypatch.setattr(downloader.time, "sleep", lambda *_a: None)
+    monkeypatch.setattr(time, "sleep", lambda *_a: None)
 
     call_count = 0
 
     def fake_dl(_session: object, _link: str, save_path: "pathlib.Path") -> downloader.Fetch:
+        """Answer one missing variant first, then as a site ending at page 5.
+
+        Returns:
+            The scripted outcome.
+        """
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -290,26 +305,33 @@ def test_run_does_not_terminate_permanently_after_one_early_transient_failure(
 
     monkeypatch.setattr(downloader, "dl_and_save_img", fake_dl)
 
-    downloader.run(config)  # fixture's `fails` is 2
+    _ = downloader.run(config)  # fixture's `fails` is 2
 
     # Reaching well past page 1 proves the single early failure didn't end the run for good.
     assert call_count > 5
 
 
-def test_run_force_starts_from_page_one(config, monkeypatch: "pytest.MonkeyPatch") -> None:
+def test_run_force_starts_from_page_one(
+    config: "AppConfig", monkeypatch: "pytest.MonkeyPatch"
+) -> None:
     """`--force` downloads from page 1 whatever is already saved."""
     monkeypatch.setattr(downloader, "get_last_saved", lambda *_a, **_k: 9999)
-    monkeypatch.setattr(downloader.time, "sleep", lambda *_a: None)
+    monkeypatch.setattr(time, "sleep", lambda *_a: None)
 
     attempted_pages = []
 
     def fake_dl(_session: object, _link: str, save_path: "pathlib.Path") -> downloader.Fetch:
+        """Record the page and answer as a site ending at the test's last page.
+
+        Returns:
+            The scripted outcome.
+        """
         page = int(save_path.name.split("_")[1])
         attempted_pages.append(page)
         return downloader.Fetch.SAVED if page <= 1 else downloader.Fetch.MISSING
 
     monkeypatch.setattr(downloader, "dl_and_save_img", fake_dl)
 
-    downloader.run(config, force=True)
+    _ = downloader.run(config, force=True)
 
     assert min(attempted_pages) == 1

@@ -97,6 +97,13 @@ root = "tools"
 # Standalone scripts (`python tools/convert_onnx_model.py`): their own folder is on sys.path.
 reportImplicitRelativeImport = "none"
 
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+# pytest puts `tests/` on sys.path, so `from conftest import ...` is how tests share fixture types.
+reportImplicitRelativeImport = "none"
+# Unit tests exercise private helpers directly; that's their job, not a leak of internals.
+reportPrivateUsage = "none"
+
 [tool.pylint.main]
 # OpenCV and ONNX Runtime are C extensions: let pylint load them to see their members.
 extension-pkg-allow-list = ["cv2", "onnxruntime"]

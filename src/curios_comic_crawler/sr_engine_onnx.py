@@ -118,8 +118,3 @@ def prepare(upscaler_config: "OnnxUpscaleConfig") -> OnnxEngineInit:
     if not model_path.is_file():
         raise FileNotFoundError(f"Bundled ONNX model not found: {model_path}")
     return OnnxEngineInit(model_path=model_path)
-
-
-def build(engine_init: OnnxEngineInit, worker_count: int) -> OnnxEngine:
-    """Build a worker process's `OnnxEngine` from `prepare()`'s output."""
-    return OnnxEngine(engine_init, worker_count)

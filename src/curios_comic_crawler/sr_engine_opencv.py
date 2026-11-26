@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SREngine implementation backed by OpenCV's `dnn_superres` module."""
 
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, final
 
 import cv2
 
@@ -23,6 +23,7 @@ class OpenCVEngineInit(NamedTuple):
     scale: int
 
 
+@final
 class OpenCVEngine:
     """Upscales images with a `cv2.dnn_superres.DnnSuperResImpl`."""
 
@@ -62,8 +63,3 @@ def prepare(upscaler_config: "OpenCVUpscaleConfig", models_dir: "pathlib.Path") 
     model_path = ensure_model(models_dir, upscaler_config.model_name, upscaler_config.model_scale)
     spec = MODEL_MANIFEST[(upscaler_config.model_name, upscaler_config.model_scale)]
     return OpenCVEngineInit(model_path=model_path, algorithm=spec.algorithm, scale=spec.scale)
-
-
-def build(engine_init: OpenCVEngineInit) -> OpenCVEngine:
-    """Build a worker process's `OpenCVEngine` from `prepare()`'s output."""
-    return OpenCVEngine(engine_init)

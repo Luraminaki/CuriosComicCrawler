@@ -35,13 +35,15 @@ def main(
             Defaults to None.
 
     Returns:
-        int: Process exit code (0 on success, 1 on configuration error or crash).
+        int: Process exit code: `run`'s own code, or 1 on a configuration error or crash.
     """
     # Parsed before logging is configured, so `--help`/bad arguments exit cleanly without
     # creating a log file.
     parser = argparse.ArgumentParser(prog=script_name)
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("-c", "--configuration", help="Configuration file location")
+    _ = parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    _ = parser.add_argument(
+        "-c", "--configuration", help="Configuration file location (default: ./config.json)"
+    )
     if configure_parser is not None:
         configure_parser(parser)
     args = parser.parse_args()
@@ -57,8 +59,8 @@ def main(
 
     try:
         config = load_config(config_file)
-    except Exception:
-        logger.exception("Loading %s failed", config_file)
+    except (OSError, ValueError) as error:  # unreadable, bad JSON, or failed validation
+        logger.error("Loading %s failed -- %s", config_file, error)
         return 1
 
     logger.info("%s acquired", config_file)
@@ -67,7 +69,7 @@ def main(
     exit_code = 0
     try:
         exit_code = run(config, args)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # top-level crash handler
         logger.exception("%s crashed", script_name)
         exit_code = 1
     finally:
