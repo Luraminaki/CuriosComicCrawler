@@ -97,9 +97,10 @@ def test_the_command_exit_code_is_returned() -> None:
     assert _cli.main("comiccrawler-test", _returning(7)) == 7
 
 
-def test_missing_config_file_returns_1() -> None:
-    """No config file: exit 1, and the command never runs."""
+def test_missing_config_file_returns_1(workdir: "pathlib.Path") -> None:
+    """No config file: exit 1, the command never runs, and the log says how to fix it."""
     assert _cli.main("comiccrawler-test", _raising(AssertionError("must not run"))) == 1
+    assert "or pass its path with -c/--configuration" in _log_text(workdir)
 
 
 @pytest.mark.parametrize("content", ["{not json", '{"root_site": "https://example.com/"}'])

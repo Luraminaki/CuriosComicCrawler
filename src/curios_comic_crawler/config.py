@@ -310,7 +310,10 @@ def load_config(path: "str | pathlib.Path") -> AppConfig:
     """
     config_path = pathlib.Path(path).expanduser().resolve()
     if not config_path.is_file():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+        raise FileNotFoundError(
+            f"Config file not found: {config_path} (run the command from the folder holding "
+            + "config.json, or pass its path with -c/--configuration)"
+        )
 
     raw_config = json.loads(config_path.read_text(encoding="utf-8"))
     return AppConfig.model_validate(raw_config)
