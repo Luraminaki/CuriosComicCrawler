@@ -18,6 +18,11 @@ if TYPE_CHECKING:
     from curios_comic_crawler.config import AppConfig
 
 
+#: Script name given to `main`: it names the log file, so a fake one never mixes with a real
+#: command's logs.
+SCRIPT_NAME = "comiccrawler-test"
+
+
 @pytest.fixture(name="workdir", autouse=True)
 def fixture_workdir(
     tmp_path: "pathlib.Path", monkeypatch: "pytest.MonkeyPatch", restore_root_logger: None
@@ -33,7 +38,7 @@ def fixture_workdir(
         The working directory.
     """
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["comiccrawler-test"])
+    monkeypatch.setattr(sys, "argv", [SCRIPT_NAME])
     del restore_root_logger  # requested for its teardown only
     return tmp_path
 
@@ -94,12 +99,12 @@ def _raising(error: BaseException) -> "Callable[[AppConfig, argparse.Namespace],
 @pytest.mark.usefixtures("config_file")
 def test_the_command_exit_code_is_returned() -> None:
     """With the default `./config.json`, the command's own exit code comes back."""
-    assert _cli.main("comiccrawler-test", _returning(7)) == 7
+    assert _cli.main(SCRIPT_NAME, _returning(7)) == 7
 
 
 def test_missing_config_file_returns_1(workdir: "pathlib.Path") -> None:
     """No config file: exit 1, the command never runs, and the log says how to fix it."""
-    assert _cli.main("comiccrawler-test", _raising(AssertionError("must not run"))) == 1
+    assert _cli.main(SCRIPT_NAME, _raising(AssertionError("must not run"))) == 1
     assert "or pass its path with -c/--configuration" in _log_text(workdir)
 
 
@@ -108,7 +113,7 @@ def test_invalid_config_returns_1(workdir: "pathlib.Path", content: str) -> None
     """Bad JSON or a config failing validation: exit 1, and the command never runs."""
     _ = (workdir / "config.json").write_text(content, encoding="utf-8")
 
-    assert _cli.main("comiccrawler-test", _raising(AssertionError("must not run"))) == 1
+    assert _cli.main(SCRIPT_NAME, _raising(AssertionError("must not run"))) == 1
 
 
 def _log_text(workdir: "pathlib.Path") -> str:
@@ -127,14 +132,14 @@ def _log_text(workdir: "pathlib.Path") -> str:
 @pytest.mark.usefixtures("config_file")
 def test_a_crash_returns_1_and_logs_the_traceback(workdir: "pathlib.Path") -> None:
     """An unexpected error is logged with its traceback, and the exit code is 1."""
-    assert _cli.main("comiccrawler-test", _raising(RuntimeError("boom"))) == 1
+    assert _cli.main(SCRIPT_NAME, _raising(RuntimeError("boom"))) == 1
     assert "Traceback" in _log_text(workdir)
 
 
 @pytest.mark.usefixtures("config_file")
 def test_ctrl_c_returns_130_without_a_traceback(workdir: "pathlib.Path") -> None:
     """Ctrl+C anywhere in a command (a download, a prompt) ends it with 130, cleanly."""
-    assert _cli.main("comiccrawler-test", _raising(KeyboardInterrupt())) == INTERRUPTED_EXIT_CODE
+    assert _cli.main(SCRIPT_NAME, _raising(KeyboardInterrupt())) == INTERRUPTED_EXIT_CODE
     log = _log_text(workdir)
     assert "Interrupted" in log
     assert "Traceback" not in log
@@ -146,19 +151,19 @@ def test_configuration_option_selects_the_file(
     """`-c` loads the given file instead of `./config.json`."""
     path = workdir / "elsewhere.json"
     _ = path.write_text(json.dumps(valid_config_dict), encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["comiccrawler-test", "-c", str(path)])
+    monkeypatch.setattr(sys, "argv", [SCRIPT_NAME, "-c", str(path)])
 
-    assert _cli.main("comiccrawler-test", _returning(0)) == 0
+    assert _cli.main(SCRIPT_NAME, _returning(0)) == 0
 
 
 def test_version_exits_without_creating_a_log(
     workdir: "pathlib.Path", monkeypatch: "pytest.MonkeyPatch"
 ) -> None:
     """`--version` is answered before logging starts: no log file is left behind."""
-    monkeypatch.setattr(sys, "argv", ["comiccrawler-test", "--version"])
+    monkeypatch.setattr(sys, "argv", [SCRIPT_NAME, "--version"])
 
     with pytest.raises(SystemExit) as stopped:
-        _ = _cli.main("comiccrawler-test", _returning(0))
+        _ = _cli.main(SCRIPT_NAME, _returning(0))
     assert stopped.value.code == 0
     assert list(workdir.iterdir()) == []
 

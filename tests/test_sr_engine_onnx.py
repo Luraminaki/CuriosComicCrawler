@@ -16,6 +16,9 @@ from curios_comic_crawler._http import sha256_of
 from curios_comic_crawler.config import OnnxUpscaleConfig
 from curios_comic_crawler.models import OnnxModelName
 
+#: The default and lightest bundled model: keeps the real-engine tests fast.
+LIGHT_MODEL: OnnxModelName = "realesr-animevideov3-x4"
+
 # Guards against a bundled asset being silently corrupted or swapped for something else.
 # If a regenerated model's hash legitimately changes, update it here to match.
 _EXPECTED_SHA256: dict[OnnxModelName, str] = {
@@ -53,12 +56,10 @@ def test_prepare_resolves_bundled_model_path(model: OnnxModelName) -> None:
 
 def test_prepare_raises_if_asset_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing bundled model raises `FileNotFoundError`."""
-    monkeypatch.setitem(
-        sr_engine_onnx._MODEL_FILENAMES, "realesr-animevideov3-x4", "does-not-exist.onnx"
-    )
+    monkeypatch.setitem(sr_engine_onnx._MODEL_FILENAMES, LIGHT_MODEL, "does-not-exist.onnx")
 
     with pytest.raises(FileNotFoundError):
-        _ = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model="realesr-animevideov3-x4"))
+        _ = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model=LIGHT_MODEL))
 
 
 @pytest.mark.parametrize("model", get_args(OnnxModelName))
@@ -106,7 +107,7 @@ def _engine_returning(output: np.ndarray) -> sr_engine_onnx.OnnxEngine:
     Returns:
         The engine.
     """
-    engine_init = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model="realesr-animevideov3-x4"))
+    engine_init = sr_engine_onnx.prepare(OnnxUpscaleConfig(onnx_model=LIGHT_MODEL))
     engine = sr_engine_onnx.OnnxEngine(engine_init, worker_count=1)
     engine._session = _FixedOutputSession(output)  # pyright: ignore[reportAttributeAccessIssue]
     return engine
