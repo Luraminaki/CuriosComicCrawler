@@ -57,12 +57,43 @@ def _histogram_levels(
         weights = np.bincount(labels, weights=histogram, minlength=nbr_cluster)
         sums = np.bincount(labels, weights=histogram * _VALUES, minlength=nbr_cluster)
         new_centers = np.where(weights > 0, sums / np.maximum(weights, 1.0), centers)
+        if not weights.all():
+            new_centers = _reseed_empty(new_centers, weights, labels, histogram)
         shift = float(np.abs(new_centers - centers).max())
         centers = new_centers
         labels = np.abs(_VALUES[:, np.newaxis] - centers[np.newaxis, :]).argmin(axis=1)
         if shift < _CONVERGENCE_EPSILON:
             break
     return centers[labels]
+
+
+def _reseed_empty(
+    centers: "np.ndarray", weights: "np.ndarray", labels: "np.ndarray", histogram: "np.ndarray"
+) -> "np.ndarray":
+    """Move each empty cluster onto the present value farthest from its own gray level.
+
+    A starting bin can fall in a gap of the histogram (line art: dark ink, white paper,
+    nothing between); left empty, it would never catch a value, and the page would get fewer
+    levels than asked. OpenCV's k-means re-seeds empty clusters the same way.
+
+    Args:
+        centers (np.ndarray): Gray level of each cluster, `float64`.
+        weights (np.ndarray): Pixel count of each cluster (0 for an empty one).
+        labels (np.ndarray): The cluster of each value 0-255.
+        histogram (np.ndarray): Pixel count of each value 0-255.
+
+    Returns:
+        np.ndarray: The gray levels, the empty clusters moved.
+    """
+    centers = centers.copy()
+    labels = labels.copy()
+    present = histogram > 0
+    for cluster in np.flatnonzero(weights == 0):
+        distance = np.where(present, np.abs(_VALUES - centers[labels]), -1.0)
+        value = int(distance.argmax())
+        centers[cluster] = _VALUES[value]
+        labels[value] = cluster  # now at distance 0: the next empty cluster picks another value
+    return centers
 
 
 def _kmeans_posterise(

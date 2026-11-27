@@ -225,3 +225,47 @@ def test_load_config_expands_the_home_folder(
     _ = (tmp_path / "config.json").write_text(json.dumps(valid_config_dict), encoding="utf-8")
 
     assert load_config("~/config.json").bd_name == "SA"
+
+
+@pytest.mark.parametrize(
+    ("section", "key"),
+    [(None, "posterize_method"), (None, "upscale_worker"), ("upscaler", "onnx_model")],
+)
+def test_misspelt_or_misplaced_keys_are_rejected(
+    valid_config_dict: dict, section: str | None, key: str
+) -> None:
+    """An unknown key is an error, not silently ignored (the default would be used instead)."""
+    target = valid_config_dict if section is None else valid_config_dict[section]
+    target[key] = "kmeans"  # e.g. onnx_model under an "opencv" upscaler section
+
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        _ = AppConfig.model_validate(valid_config_dict)
+
+
+def test_unknown_key_in_an_onnx_section_is_rejected(valid_config_dict: dict) -> None:
+    """The onnx section refuses keys of the opencv one."""
+    valid_config_dict["upscaler"] = {"engine": "onnx", "model_name": "edsr"}
+
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        _ = AppConfig.model_validate(valid_config_dict)
+
+
+@pytest.mark.parametrize("field", ["folder_save_dl", "folder_save_upscale", "folder_models"])
+@pytest.mark.parametrize("folder", ["/etc", "\\\\server\\share", "C:\\x", "C:x", "..\\x"])
+def test_sub_folders_stay_inside_folder_data(
+    valid_config_dict: dict, field: str, folder: str
+) -> None:
+    """An absolute, drive or `..` sub-folder would write outside `folder_data`."""
+    valid_config_dict[field] = folder
+
+    with pytest.raises(ValidationError, match=field):
+        _ = AppConfig.model_validate(valid_config_dict)
+
+
+def test_folder_data_itself_may_be_absolute(
+    valid_config_dict: dict, tmp_path: pathlib.Path
+) -> None:
+    """Only the sub-folders must be relative: the data folder can live anywhere."""
+    valid_config_dict["folder_data"] = str(tmp_path) + "/"
+
+    assert AppConfig.model_validate(valid_config_dict).dl_dir.is_relative_to(tmp_path)

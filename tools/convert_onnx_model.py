@@ -29,6 +29,7 @@ import onnxruntime
 import torch
 from _archs import RRDBNet, SRVGGNetCompact
 
+from curios_comic_crawler._atomic import atomic_target
 from curios_comic_crawler._http import download_verified, sha256_of
 
 if TYPE_CHECKING:
@@ -181,7 +182,9 @@ def convert(spec: _ModelSpec, output_path: pathlib.Path) -> None:
         )
         _verify(exported)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        _ = shutil.copyfile(exported, output_path)
+        # Copied under a temporary name first: a cut-off copy must not replace a bundled model.
+        with atomic_target(output_path) as partial:
+            _ = shutil.copyfile(exported, partial)
 
     print(f"Exported to {output_path}")
     print(f"sha256: {sha256_of(output_path)}")

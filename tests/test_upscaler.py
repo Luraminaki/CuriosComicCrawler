@@ -59,15 +59,7 @@ def test_select_remaining_without_force_skips_completed() -> None:
     originals = [pathlib.Path(f"p{i}.jpg") for i in range(5)]
     completed = originals[:3]
 
-    assert upscaler._select_remaining(originals, completed, force=False) == originals[3:]
-
-
-def test_select_remaining_with_force_reprocesses_everything() -> None:
-    """`--force` upscales every page again."""
-    originals = [pathlib.Path(f"p{i}.jpg") for i in range(5)]
-    completed = originals[:3]
-
-    assert upscaler._select_remaining(originals, completed, force=True) == originals
+    assert upscaler._select_remaining(originals, completed) == originals[3:]
 
 
 def test_select_remaining_handles_a_gap_in_completed() -> None:
@@ -77,7 +69,7 @@ def test_select_remaining_handles_a_gap_in_completed() -> None:
     originals = [pathlib.Path(f"p{i}.jpg") for i in range(5)]
     completed = [originals[0], originals[1], originals[3], originals[4]]
 
-    assert upscaler._select_remaining(originals, completed, force=False) == [originals[2]]
+    assert upscaler._select_remaining(originals, completed) == [originals[2]]
 
 
 def test_resolve_worker_count_caps_at_cpu_count(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,7 +150,9 @@ def test_process_one_writes_upscaled_page(
     upscale_dir = tmp_path / "out"
     upscale_dir.mkdir()
 
-    name, elapsed = upscaler._process_one(img_path, upscale_dir, gray_values=4)
+    name, elapsed = upscaler._process_one(
+        img_path, upscale_dir, gray_values=4, posterise_method="histogram"
+    )
 
     assert name == "page.png"
     assert elapsed >= 0
@@ -178,7 +172,7 @@ def test_process_one_raises_when_engine_not_initialized(
     _write_test_image(img_path)
 
     with pytest.raises(RuntimeError, match="not initialized"):
-        _ = upscaler._process_one(img_path, tmp_path, gray_values=4)
+        _ = upscaler._process_one(img_path, tmp_path, gray_values=4, posterise_method="histogram")
 
 
 def test_process_one_raises_on_missing_or_corrupt_image(
@@ -191,7 +185,7 @@ def test_process_one_raises_on_missing_or_corrupt_image(
     _ = bad_path.write_bytes(b"not actually an image")
 
     with pytest.raises(ValueError, match="Failed to read image"):
-        _ = upscaler._process_one(bad_path, tmp_path, gray_values=4)
+        _ = upscaler._process_one(bad_path, tmp_path, gray_values=4, posterise_method="histogram")
 
 
 def test_unencodable_page_fails_and_leaves_no_file(
@@ -206,7 +200,7 @@ def test_unencodable_page_fails_and_leaves_no_file(
     monkeypatch.setattr(cv2, "imencode", lambda *_a, **_k: (False, None))
 
     with pytest.raises(ValueError, match="can't encode"):
-        _ = upscaler._process_one(img_path, out_dir, gray_values=4)
+        _ = upscaler._process_one(img_path, out_dir, gray_values=4, posterise_method="histogram")
     assert list(out_dir.iterdir()) == []
 
 

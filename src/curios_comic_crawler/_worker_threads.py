@@ -19,9 +19,10 @@ _CPU_TOPOLOGY = pathlib.Path("/sys/devices/system/cpu")
 def available_cpus() -> int:
     """Count the CPUs this process may actually run on.
 
-    `os.cpu_count()` counts the machine's CPUs, ignoring CPU affinity (`taskset`, container
-    limits); the affinity set is what bounds useful parallelism. It isn't available on every
-    platform (e.g. macOS, Windows), where the machine's count is the best answer.
+    `os.cpu_count()` counts the machine's CPUs, ignoring CPU affinity (`taskset`, a container's
+    `--cpuset-cpus`); the affinity set is what bounds useful parallelism. A CPU quota (Docker's
+    `--cpus`) doesn't change it, so isn't seen. Affinity isn't available on every platform
+    (e.g. macOS, Windows), where the machine's count is the best answer.
 
     Returns:
         int: At least 1.

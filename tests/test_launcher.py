@@ -146,3 +146,14 @@ def test_invalid_menu_answer_asks_again(
     assert launcher.run(config, _args()) == 0
     assert calls == {"download": False}
     assert "'x' is not a valid choice." in capsys.readouterr().out
+
+
+def test_ctrl_d_at_a_question_runs_nothing(
+    config: "AppConfig", monkeypatch: "pytest.MonkeyPatch"
+) -> None:
+    """Input closed (Ctrl+D) instead of an answer: nothing runs, no crash, exit 130."""
+    calls = _record_runs(monkeypatch)
+    monkeypatch.setattr("sys.stdin", _Terminal(""))
+
+    assert launcher.run(config, _args()) == INTERRUPTED_EXIT_CODE
+    assert not calls

@@ -12,7 +12,9 @@ from logging.handlers import QueueHandler, QueueListener
 from typing import TYPE_CHECKING
 
 import cv2
+import requests
 
+from curios_comic_crawler._atomic import atomic_target
 from curios_comic_crawler._exit_codes import INTERRUPTED_EXIT_CODE
 from curios_comic_crawler._worker_threads import available_cpus, threads_per_worker
 from curios_comic_crawler.image_ops import area_posterise, sharpen_image
@@ -21,6 +23,7 @@ from curios_comic_crawler.sr_engine import build_engine, prepare_engine
 if TYPE_CHECKING:
     import pathlib
     from concurrent.futures import Future
+    from multiprocessing.context import BaseContext
     from multiprocessing.queues import Queue
 
     import numpy as np
@@ -39,10 +42,6 @@ DEFAULT_WORKERS = 1
 # What a single page can fail with: unreadable or unwritable file, undecodable image, engine
 # failure (RuntimeError, see sr_engine_onnx), or OpenCV refusing the data.
 _PAGE_ERRORS = (OSError, ValueError, RuntimeError, cv2.error)
-# Workers start from a fresh server process rather than a fork of this one: forking copies the
-# running log listener thread's locks (a deadlock risk), and Python 3.14 makes forkserver the
-# default on Linux anyway -- this keeps every version behaving the same. Windows only has spawn.
-_START_METHOD = "forkserver" if "forkserver" in multiprocessing.get_all_start_methods() else "spawn"
 
 # Set once per worker process by `_init_worker`, then reused for every page that process is
 # given -- reloading the model per page would dwarf the actual upscaling cost.
@@ -96,19 +95,15 @@ def _write_atomically(out_path: "pathlib.Path", image: "np.ndarray") -> None:
     encoded_ok, encoded = cv2.imencode(out_path.suffix, image)
     if not encoded_ok:
         raise ValueError(f"OpenCV can't encode {out_path.suffix!r} images: {out_path}")
-    temporary = out_path.with_name(f".{out_path.name}.part")
-    try:
+    with atomic_target(out_path) as temporary:
         _ = temporary.write_bytes(encoded)  # the encoded buffer, without copying it
-        _ = temporary.replace(out_path)
-    finally:
-        temporary.unlink(missing_ok=True)  # left only if the write failed
 
 
 def _process_one(
     img_path: "pathlib.Path",
     upscale_dir: "pathlib.Path",
     gray_values: int,
-    posterise_method: "PosteriseMethod" = "histogram",
+    posterise_method: "PosteriseMethod",
 ) -> tuple[str, float]:
     """Upscale, posterise, sharpen, and save a single page. Runs in a worker process.
 
@@ -143,8 +138,6 @@ def _process_one(
 def _select_remaining(
     originals: list["pathlib.Path"],
     completed: list["pathlib.Path"],
-    *,
-    force: bool,
 ) -> list["pathlib.Path"]:
     """Decide which downloaded pages still need upscaling.
 
@@ -155,13 +148,10 @@ def _select_remaining(
     Args:
         originals (list[pathlib.Path]): Downloaded pages, sorted.
         completed (list[pathlib.Path]): Already-upscaled pages.
-        force (bool): If True, every downloaded page is reprocessed regardless of `completed`.
 
     Returns:
         list[pathlib.Path]: The subset of `originals` to (re)process.
     """
-    if force:
-        return originals
     completed_names = {path.name for path in completed}
     return [path for path in originals if path.name not in completed_names]
 
@@ -284,20 +274,24 @@ def _collect(futures: "dict[Future[tuple[str, float]], pathlib.Path]", progress:
         futures (dict[Future, pathlib.Path]): Submitted pages.
         progress (_Progress): Updated as pages complete.
     """
+    pool_broken = False
     for future in as_completed(futures):
         page = futures[future]
         try:
             name, elapsed = future.result()
         except BrokenProcessPool as error:
-            # Every other pending page fails the same way: report the cause once.
-            logger.error(
-                "A worker process died (%s) -- %s page(s) left unprocessed. With a heavy model "
-                + "or several workers, this is usually a lack of memory (see upscale_workers).",
-                error,
-                progress.left,
-            )
-            progress.failed += progress.left
-            return
+            # Every page not written yet fails the same way, in any order (a page written just
+            # before the crash may still come after): count each, report the cause once.
+            progress.failed += 1
+            if not pool_broken:
+                pool_broken = True
+                logger.error(
+                    "A worker process died (%s): the pages not written yet are lost. With a "
+                    + "heavy model or several workers, this is usually a lack of memory (see "
+                    + "upscale_workers).",
+                    error,
+                )
+            continue
         except _PAGE_ERRORS:  # pylint: disable=catching-non-exception  # cv2.error is one, pylint can't see it
             progress.failed += 1
             logger.exception("Page %s failed to upscale", page.name)
@@ -305,18 +299,26 @@ def _collect(futures: "dict[Future[tuple[str, float]], pathlib.Path]", progress:
         progress.record(name, elapsed)
 
 
-def _report_interrupt(futures: "dict[Future[tuple[str, float]], pathlib.Path]") -> None:
-    """Log how many pages were written and cancelled, once the pool has stopped.
+def _report_interrupt(futures: "dict[Future[tuple[str, float]], pathlib.Path]", total: int) -> None:
+    """Log how many pages were written, failed and cancelled, once the pool has stopped.
 
     Pages already handed to a worker finish after Ctrl+C (their output is written
-    atomically), so they count as written.
+    atomically), so they count as written; pages not submitted yet count as cancelled.
 
     Args:
         futures (dict[Future, pathlib.Path]): Every submitted page, all of them settled.
+        total (int): Pages the run had to process.
     """
-    cancelled = sum(1 for future in futures if future.cancelled())
-    written = sum(1 for future in futures if not future.cancelled() and future.exception() is None)
-    logger.warning("Interrupted: %s page(s) written, %s cancelled", written, cancelled)
+    settled = [future for future in futures if not future.cancelled()]
+    failed = sum(1 for future in settled if future.exception() is not None)
+    written = len(settled) - failed
+    logger.warning(
+        "Interrupted: %s page(s) written, %s failed, %s cancelled (of %s)",
+        written,
+        failed,
+        total - written - failed,
+        total,
+    )
 
 
 def _pages_to_upscale(config: "AppConfig", *, force: bool) -> list["pathlib.Path"]:
@@ -336,7 +338,84 @@ def _pages_to_upscale(config: "AppConfig", *, force: bool) -> list["pathlib.Path
         logger.info("Force re-upscale requested, reprocessing all %s page(s)", len(originals))
         return originals
     completed = list(config.upscale_dir.glob(f"*{config.ext}"))
-    return _select_remaining(originals, completed, force=False)
+    return _select_remaining(originals, completed)
+
+
+def _pool_context() -> "BaseContext":
+    """Choose how worker processes start: a fresh server process, never a fork of this one.
+
+    Forking would copy the running log listener thread's locks (a deadlock risk); Python 3.14
+    makes forkserver the default on Linux anyway, so every version behaves the same. The server
+    imports `_ignore_sigint` first, so it and every worker ignore Ctrl+C from the start.
+    Windows only has spawn (each worker then ignores Ctrl+C from `_init_worker`).
+
+    Returns:
+        BaseContext: The multiprocessing context for the pool and its log queue.
+    """
+    if "forkserver" not in multiprocessing.get_all_start_methods():
+        return multiprocessing.get_context("spawn")
+    context = multiprocessing.get_context("forkserver")
+    context.set_forkserver_preload(["curios_comic_crawler._ignore_sigint", "__main__"])
+    return context
+
+
+def _submit_all(
+    executor: ProcessPoolExecutor, pages: list["pathlib.Path"], config: "AppConfig"
+) -> "dict[Future[tuple[str, float]], pathlib.Path]":
+    """Hand every page to the pool.
+
+    Args:
+        executor (ProcessPoolExecutor): The pool.
+        pages (list[pathlib.Path]): The pages to process.
+        config (AppConfig): Application configuration.
+
+    Returns:
+        dict[Future, pathlib.Path]: Each page's future.
+    """
+    return {
+        executor.submit(
+            _process_one, page, config.upscale_dir, config.gray_values, config.posterise_method
+        ): page
+        for page in pages
+    }
+
+
+def _process_pages(
+    executor: ProcessPoolExecutor,
+    pages: list["pathlib.Path"],
+    config: "AppConfig",
+    worker_count: int,
+) -> int:
+    """Hand every page to the pool, then wait for them all.
+
+    Args:
+        executor (ProcessPoolExecutor): The started pool.
+        pages (list[pathlib.Path]): The pages to process.
+        config (AppConfig): Application configuration.
+        worker_count (int): The pool's size (for the time estimate).
+
+    Returns:
+        int: 0 if every page was written, 1 if any failed, 130 if interrupted.
+    """
+    progress = _Progress(total=len(pages), worker_count=worker_count)
+    futures: dict[Future[tuple[str, float]], pathlib.Path] = {}
+    try:
+        # Submitted inside the `try`: the first submit starts the workers, which takes a while.
+        futures.update(_submit_all(executor, pages, config))
+        _collect(futures, progress)
+    except KeyboardInterrupt:
+        logger.warning("Interrupted: cancelling the pages not started yet...")
+        executor.shutdown(wait=True, cancel_futures=True)
+        _report_interrupt(futures, len(pages))
+        return INTERRUPTED_EXIT_CODE
+    except BaseException:  # re-raised: only drops the queued pages before the crash
+        # Leaving the `with` would otherwise process every remaining page first.
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    if progress.failed:
+        logger.warning("%s of %s page(s) failed to upscale", progress.failed, progress.total)
+        return 1
+    return 0
 
 
 def run(config: "AppConfig", *, force: bool = False) -> int:
@@ -353,15 +432,19 @@ def run(config: "AppConfig", *, force: bool = False) -> int:
             already been upscaled (existing files are overwritten). Defaults to False.
 
     Returns:
-        int: 0 on success (including when there is nothing left to process), 1 if any page
-        failed or a worker died, 130 if interrupted.
+        int: 0 on success (including when there is nothing left to process), 1 if the model
+        can't be prepared, any page failed or a worker died, 130 if interrupted.
     """
     remaining = _pages_to_upscale(config, force=force)
     if not remaining:
         logger.info("Nothing to upscale in %s", config.dl_dir)
         return 0
 
-    engine_init = prepare_engine(config)
+    try:
+        engine_init = prepare_engine(config)
+    except (requests.RequestException, OSError, ValueError) as error:  # download, disk, checksum
+        logger.error("Can't prepare the %s upscaler's model -- %s", config.upscaler.engine, error)
+        return 1
     worker_count = _resolve_worker_count(config.upscale_workers, len(remaining))
     logger.info(
         "Using upscaler engine=%s, posterise=%s, across %s worker process(es)",
@@ -369,8 +452,7 @@ def run(config: "AppConfig", *, force: bool = False) -> int:
         config.posterise_method,
         worker_count,
     )
-    progress = _Progress(total=len(remaining), worker_count=worker_count)
-    context = multiprocessing.get_context(_START_METHOD)
+    context = _pool_context()
     root = logging.getLogger()
     log_queue: Queue[logging.LogRecord] = context.Queue()
     listener = QueueListener(log_queue, *root.handlers, respect_handler_level=True)
@@ -382,32 +464,7 @@ def run(config: "AppConfig", *, force: bool = False) -> int:
             initializer=_init_worker,
             initargs=(engine_init, worker_count, log_queue, root.level),
         ) as executor:
-            futures = {
-                executor.submit(
-                    _process_one,
-                    page,
-                    config.upscale_dir,
-                    config.gray_values,
-                    config.posterise_method,
-                ): page
-                for page in remaining
-            }
-            try:
-                _collect(futures, progress)
-            except KeyboardInterrupt:
-                logger.warning("Interrupted: cancelling the pages not started yet...")
-                executor.shutdown(wait=True, cancel_futures=True)
-                _report_interrupt(futures)
-                return INTERRUPTED_EXIT_CODE
-            except BaseException:  # re-raised: only drops the queued pages before the crash
-                # Leaving the `with` would otherwise process every remaining page first.
-                executor.shutdown(wait=True, cancel_futures=True)
-                raise
+            return _process_pages(executor, remaining, config, worker_count)
     finally:
         listener.stop()
         log_queue.close()
-
-    if progress.failed:
-        logger.warning("%s of %s page(s) failed to upscale", progress.failed, progress.total)
-        return 1
-    return 0

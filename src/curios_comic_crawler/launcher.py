@@ -10,6 +10,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from curios_comic_crawler import downloader
+from curios_comic_crawler._exit_codes import INTERRUPTED_EXIT_CODE
 
 if TYPE_CHECKING:
     import argparse
@@ -80,6 +81,27 @@ def _prompt_yes_no(prompt: str) -> bool:
     return input(f"{prompt} [y/N] ").strip().lower() in ("y", "yes")
 
 
+def _ask(force_download: bool, force_upscale: bool) -> tuple[str, bool, bool]:
+    """Ask what to run, and whether to force each step a `--force-*` flag didn't already set.
+
+    Args:
+        force_download (bool): `--force-download` (no question asked if given).
+        force_upscale (bool): `--force-upscale` (no question asked if given).
+
+    Returns:
+        tuple[str, bool, bool]: The mode, then the download and upscale force choices.
+
+    Raises:
+        EOFError: If the input ends (Ctrl+D) before every question is answered.
+    """
+    mode = _prompt_mode()
+    if mode in ("download", "both") and not force_download:
+        force_download = _prompt_yes_no("Force re-download of every page?")
+    if mode in ("upscale", "both") and not force_upscale:
+        force_upscale = _prompt_yes_no("Force re-upscale of every downloaded page?")
+    return mode, force_download, force_upscale
+
+
 def run(config: "AppConfig", args: "argparse.Namespace") -> int:
     """Run the downloader and/or upscaler, interactively or per `args`.
 
@@ -90,7 +112,8 @@ def run(config: "AppConfig", args: "argparse.Namespace") -> int:
 
     Returns:
         int: 0 on success, the failing step's code otherwise (1, or 130 if interrupted), 2 if
-        `--mode` is missing and there is no terminal to ask from.
+        `--mode` is missing and there is no terminal to ask from, 130 if the questions are
+        left unanswered (Ctrl+D).
     """
     mode = args.mode
     force_download = args.force_download
@@ -100,12 +123,11 @@ def run(config: "AppConfig", args: "argparse.Namespace") -> int:
         if not sys.stdin.isatty():  # cron, pipes: nobody to answer the questions
             logger.error("No --mode given and no terminal to ask from: pass --mode")
             return 2
-        mode = _prompt_mode()
-        # A --force-* flag given on the command line answers its own question.
-        if mode in ("download", "both") and not force_download:
-            force_download = _prompt_yes_no("Force re-download of every page?")
-        if mode in ("upscale", "both") and not force_upscale:
-            force_upscale = _prompt_yes_no("Force re-upscale of every downloaded page?")
+        try:
+            mode, force_download, force_upscale = _ask(force_download, force_upscale)
+        except EOFError:  # Ctrl+D: the terminal closed its input instead of answering
+            logger.warning("No answer: nothing run")
+            return INTERRUPTED_EXIT_CODE
 
     exit_code = 0
 

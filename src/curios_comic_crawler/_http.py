@@ -5,13 +5,14 @@ Used by the page downloader, the model registry and `tools/convert_onnx_model.py
 """
 
 import hashlib
-import pathlib
-import tempfile
 from typing import TYPE_CHECKING
 
 import requests
 
+from curios_comic_crawler._atomic import atomic_target
+
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import Iterator
 
 CHUNK_SIZE_BYTES = 256 * 1024
@@ -33,7 +34,7 @@ def stream_to_file(
             _ = target.write(chunk)
 
 
-def _chunks(path: pathlib.Path) -> "Iterator[bytes]":
+def _chunks(path: "pathlib.Path") -> "Iterator[bytes]":
     """Read a file chunk by chunk (bounded memory, whatever its size).
 
     Args:
@@ -47,7 +48,7 @@ def _chunks(path: pathlib.Path) -> "Iterator[bytes]":
             yield chunk
 
 
-def sha256_of(path: pathlib.Path) -> str:
+def sha256_of(path: "pathlib.Path") -> str:
     """Hash a file without loading it whole into memory.
 
     Args:
@@ -62,13 +63,12 @@ def sha256_of(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
-def download_verified(url: str, target: pathlib.Path, sha256: str) -> None:
+def download_verified(url: str, target: "pathlib.Path", sha256: str) -> None:
     """Download a file and move it into place only if its SHA-256 matches.
 
-    The body is streamed to a uniquely named temporary file next to `target` (two runs
-    downloading the same file can't mix their writes), checked, then renamed over `target`
-    (so `target` is either absent, previous, or complete and verified). The temporary file is
-    removed whatever happens.
+    The body is streamed to a temporary file next to `target`, checked, then renamed over
+    `target` (see `atomic_target`): `target` is either absent, previous, or complete and
+    verified.
 
     Args:
         url (str): Where to download from.
@@ -80,11 +80,7 @@ def download_verified(url: str, target: pathlib.Path, sha256: str) -> None:
         ValueError: If the content doesn't match `sha256`.
     """
     target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        dir=target.parent, prefix=f".{target.name}.", suffix=".part", delete=False
-    ) as temporary_file:
-        temporary = pathlib.Path(temporary_file.name)
-    try:
+    with atomic_target(target) as temporary:
         with requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
             _ = response.raise_for_status()
             stream_to_file(response, temporary)
@@ -94,6 +90,3 @@ def download_verified(url: str, target: pathlib.Path, sha256: str) -> None:
                 f"{target.name} failed its integrity check: expected sha256 {sha256}, "
                 + f"got {digest}"
             )
-        _ = temporary.replace(target)
-    finally:
-        temporary.unlink(missing_ok=True)

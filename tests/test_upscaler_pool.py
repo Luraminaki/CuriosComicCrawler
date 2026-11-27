@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, final
 import cv2
 import numpy as np
 import pytest
+import requests
 
 from curios_comic_crawler import upscaler
 from curios_comic_crawler._exit_codes import INTERRUPTED_EXIT_CODE
@@ -43,8 +44,8 @@ class _ScriptedExecutor:
         self.script: dict[str, float | BaseException | None] = script
         self.submitted: list[tuple[object, ...]] = []
         self.shutdowns: list[dict[str, bool]] = []
-        # Every future handed out, so `shutdown` can cancel the pending ones.
-        self._futures: list[Future[tuple[str, float]]] = []
+        # Every future handed out, in submit order (so `shutdown` can cancel the pending ones).
+        self.order: list[Future[tuple[str, float]]] = []
 
     def __call__(self, **_pool_options: object) -> "_ScriptedExecutor":
         """Be "constructed" by `run` in place of the real pool class.
@@ -99,7 +100,7 @@ class _ScriptedExecutor:
         elif outcome is not None:
             _ = future.set_running_or_notify_cancel()
             future.set_result((page.name, outcome))
-        self._futures.append(future)
+        self.order.append(future)
         return future
 
     def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
@@ -111,7 +112,7 @@ class _ScriptedExecutor:
         """
         self.shutdowns.append({"wait": wait, "cancel_futures": cancel_futures})
         if cancel_futures:
-            for future in self._futures:
+            for future in self.order:
                 _ = future.cancel()
 
 
@@ -185,9 +186,14 @@ def test_run_counts_every_page_left_as_failed_when_a_worker_dies(
 def test_ctrl_c_returns_130_and_reports_written_and_cancelled(
     pages: "AppConfig", monkeypatch: "pytest.MonkeyPatch", caplog: "pytest.LogCaptureFixture"
 ) -> None:
-    """Ctrl+C cancels the pages not started, and says how many were written."""
-    first, *others = _names(pages)
-    executor = _install(monkeypatch, {first: 0.5} | dict.fromkeys(others, PENDING))
+    """Ctrl+C cancels the pages not started, and accounts for every page of the run."""
+    first, second, third = _names(pages)
+    script: dict[str, float | BaseException | None] = {
+        first: 0.5,
+        second: ValueError("corrupt"),
+        third: PENDING,
+    }
+    executor = _install(monkeypatch, script)
 
     def interrupted(*_args: object) -> None:
         """Be interrupted while waiting for the pages.
@@ -204,7 +210,7 @@ def test_ctrl_c_returns_130_and_reports_written_and_cancelled(
 
     assert upscaler.run(pages) == INTERRUPTED_EXIT_CODE
     assert executor.shutdowns[0] == {"wait": True, "cancel_futures": True}
-    assert "1 page(s) written, 2 cancelled" in caplog.text
+    assert "1 page(s) written, 1 failed, 1 cancelled (of 3)" in caplog.text
 
 
 def test_unexpected_error_cancels_the_remaining_pages_before_propagating(
@@ -273,3 +279,84 @@ def _names(config: "AppConfig") -> list[str]:
         The names.
     """
     return sorted(path.name for path in config.dl_dir.iterdir())
+
+
+def test_a_page_written_just_before_a_worker_died_still_counts_as_written(
+    pages: "AppConfig", monkeypatch: "pytest.MonkeyPatch", caplog: "pytest.LogCaptureFixture"
+) -> None:
+    """A broken pool fails only the pages it lost, whatever order they come out in."""
+    first, second, third = _names(pages)
+    script: dict[str, float | BaseException | None] = {
+        first: BrokenProcessPool("killed"),
+        second: BrokenProcessPool("killed"),
+        third: 0.5,
+    }
+    executor = _install(monkeypatch, script)
+    # The order `as_completed` gives a batch of finished futures in is arbitrary: fix the worst.
+    monkeypatch.setattr(
+        upscaler, "as_completed", lambda futures: sorted(futures, key=executor.order.index)
+    )
+
+    assert upscaler.run(pages) == 1
+    assert "2 of 3 page(s) failed" in caplog.text
+    assert caplog.text.count("A worker process died") == 1
+
+
+def test_ctrl_c_while_the_workers_start_cancels_and_reports(
+    pages: "AppConfig", monkeypatch: "pytest.MonkeyPatch", caplog: "pytest.LogCaptureFixture"
+) -> None:
+    """Ctrl+C during the submits (the first one starts the workers) is still a clean stop."""
+    first, *others = _names(pages)
+    executor = _install(monkeypatch, {first: PENDING} | dict.fromkeys(others, PENDING))
+    submit = executor.submit
+
+    def interrupted_second_submit(*args: object) -> "Future[tuple[str, float]]":
+        """Submit the first page, then be interrupted.
+
+        Args:
+            *args: `submit`'s arguments.
+
+        Returns:
+            The first page's future.
+
+        Raises:
+            KeyboardInterrupt: From the second page on.
+        """
+        if executor.submitted:
+            raise KeyboardInterrupt
+        return submit(*args)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(executor, "submit", interrupted_second_submit)
+
+    assert upscaler.run(pages) == INTERRUPTED_EXIT_CODE
+    assert executor.shutdowns[0] == {"wait": True, "cancel_futures": True}
+    assert "0 page(s) written, 0 failed, 3 cancelled (of 3)" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "error", [requests.ConnectionError("offline"), ValueError("bad checksum"), OSError("disk")]
+)
+def test_a_model_that_cant_be_prepared_fails_cleanly(
+    pages: "AppConfig",
+    monkeypatch: "pytest.MonkeyPatch",
+    caplog: "pytest.LogCaptureFixture",
+    error: Exception,
+) -> None:
+    """A failed model download, checksum or write is one error line and exit 1, no crash."""
+
+    def failing_prepare(_config: "AppConfig") -> None:
+        """Fail like `ensure_model` can.
+
+        Args:
+            _config: Ignored.
+
+        Raises:
+            Exception: `error`.
+        """
+        raise error
+
+    monkeypatch.setattr(upscaler, "prepare_engine", failing_prepare)
+
+    assert upscaler.run(pages) == 1
+    assert "Can't prepare the opencv upscaler's model" in caplog.text
+    assert not any(record.exc_info for record in caplog.records)

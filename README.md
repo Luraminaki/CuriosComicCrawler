@@ -37,8 +37,9 @@ See [INSTALL.md](INSTALL.md) for step-by-step instructions (Windows, Debian/Ubun
 ## Configuration
 
 Every command reads `config.json` (or a file passed via `-c/--configuration`), validated
-against a pydantic model -- an invalid or missing field is reported as a single error message
-(no traceback) and the command exits with code 1, instead of failing deep inside the code.
+against a pydantic model -- an invalid or missing field, or an unknown one (a misspelt key
+would otherwise be ignored and its default used), is reported as a single error message (no
+traceback) and the command exits with code 1, instead of failing deep inside the code.
 
 | Field                 | Type | Default | Meaning and constraints |
 |-----------------------|------|---------|--------------------------|
@@ -49,9 +50,9 @@ against a pydantic model -- an invalid or missing field is reported as a single 
 | `filename_variants`   | list of strings | required | Ordered filename suffixes tried for each page, e.g. `["small", "small_b"]` tries `..._small.jpg` then `..._small_b.jpg`. At least one entry; entries may not be empty or contain `/` or `\` |
 | `ext`                 | string | required | Image extension. Must start with `.` (e.g. `".jpg"`) |
 | `folder_data`         | string | required | Root data folder, relative to the current directory |
-| `folder_save_dl`      | string | required | Subfolder of `folder_data` downloaded pages are saved to |
-| `folder_save_upscale` | string | required | Subfolder of `folder_data` upscaled pages are saved to |
-| `folder_models`       | string | required | Subfolder of `folder_data` super-resolution models are stored in (used by the `opencv` engine only) |
+| `folder_save_dl`      | string | required | Subfolder of `folder_data` downloaded pages are saved to. Relative (no `/`, `\\` or drive letter at the start), no `..` |
+| `folder_save_upscale` | string | required | Subfolder of `folder_data` upscaled pages are saved to. Relative (no `/`, `\\` or drive letter at the start), no `..` |
+| `folder_models`       | string | required | Subfolder of `folder_data` super-resolution models are stored in (used by the `opencv` engine only). Relative, no `..` |
 | `upscaler`            | object | required | Which super-resolution engine/model to upscale with: `engine` is `"onnx"` or `"opencv"` -- see [About the models](#about-the-models) |
 | `gray_values`         | integer | required | Number of gray levels the upscaled image is posterised to. 2 to 255 (255 leaves the image unchanged) |
 | `posterise_method`    | string | `"histogram"` | How those gray levels are found: `"histogram"` or `"kmeans"` -- see [Posterisation](#posterisation) |
@@ -110,9 +111,11 @@ OpenCV is pinned below 5 (`opencv-contrib-python>=4.9,<5`): OpenCV 5 can no long
 ### Posterisation
 
 After upscaling, every page is reduced to `gray_values` gray levels, then sharpened.
-`posterise_method` picks how the levels are found; both start from the same levels and their
-results differ by at most 9/255, in the light grays (no visible difference side by side).
-Measured on a real page (414x1284 upscaled to 1656x5136):
+`posterise_method` picks how the levels are found. Both start from the same levels; on 22 real
+pages, their results differed by 8/255 to 13/255 at most on all but one page (22/255), in the
+light grays, with no visible difference side by side. `"histogram"` always gives every level
+asked for (an empty level is moved onto the farthest value), where OpenCV's k-means sometimes
+gives one or two fewer. Measured on a real page (414x1284 upscaled to 1656x5136):
 
 | `posterise_method`      | How                                                  | Time per page | Extra memory |
 |-------------------------|------------------------------------------------------|---------------|--------------|
@@ -210,9 +213,12 @@ All three also work as `python -m curios_comic_crawler.cli_launcher` / `cli_down
 ### Stopping a run (Ctrl+C)
 
 Ctrl+C stops any command cleanly with exit code 130 and an `Interrupted` log line, without a
-traceback. While upscaling, the pages already running finish and are written, the queued ones are
-cancelled (the log says how many of each), and no truncated file is left behind; the next run
-picks up where this one stopped.
+traceback (closing the launcher's questions with Ctrl+D does the same). While upscaling, the
+pages already running finish and are written, the queued ones are cancelled (the log says how
+many were written, failed and cancelled), and no truncated file is left behind; the next run
+picks up where this one stopped. Pressed during the first half-second, while Python is still
+loading OpenCV, Ctrl+C prints Python's own traceback; pressed just as the first worker starts,
+that worker may print one after the command has exited. Neither writes or damages a file.
 
 ## Outputs and logs
 
@@ -234,9 +240,9 @@ only the 10 most recent runs of each command are kept -- older ones are deleted 
 | Code | Meaning |
 |------|---------|
 | 0    | Success: nothing left to do, or the download reached the end of the comic |
-| 1    | Failure: the download stopped on a network/server error, a page failed to upscale, a worker died, the configuration is missing or invalid, or the command crashed (traceback in the log) |
+| 1    | Failure: the download stopped on a network/server error, an `opencv` model couldn't be downloaded or verified, a page failed to upscale, a worker died, the configuration is missing or invalid, or the command crashed (traceback in the log) |
 | 2    | `comiccrawler` run without `--mode` and without a terminal to ask from (an invalid command-line argument also exits 2, from `argparse`) |
-| 130  | Interrupted (Ctrl+C) |
+| 130  | Interrupted (Ctrl+C, or Ctrl+D at the launcher's questions) |
 
 With `--mode both`, the upscale step runs even if the download step failed, and the launcher
 returns the higher of the two steps' codes.

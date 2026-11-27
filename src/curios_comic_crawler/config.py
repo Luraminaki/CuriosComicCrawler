@@ -38,6 +38,9 @@ class OpenCVUpscaleConfig(BaseModel):
         model_scale: Upscaling factor to use for `model_name`.
     """
 
+    # A misspelt key (e.g. "posterize_method") would otherwise be dropped silently.
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
+
     engine: Literal["opencv"] = "opencv"
     model_name: ModelName
     model_scale: int
@@ -74,6 +77,9 @@ class OnnxUpscaleConfig(BaseModel):
         onnx_model: Which bundled model to use. Most are tuned for illustration/anime-style
             art; `realesrgan-x4plus` is the general-purpose (photo) exception.
     """
+
+    # A misspelt key (e.g. "posterize_method") would otherwise be dropped silently.
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
 
     engine: Literal["onnx"] = "onnx"
     onnx_model: OnnxModelName = "realesr-animevideov3-x4"
@@ -136,7 +142,8 @@ class AppConfig(BaseModel):
     headers: dict[str, str]
     upscale_workers: int | None = Field(default=None, ge=1)
 
-    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)
+    # A misspelt key (e.g. "posterize_method") would otherwise be dropped silently.
+    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True, extra="forbid")
 
     @field_validator("bd_name")
     @classmethod
@@ -189,12 +196,33 @@ class AppConfig(BaseModel):
             str: `value`, unchanged.
 
         Raises:
-            ValueError: If it's empty or contains a `..` segment.
+            ValueError: If it's empty or contains a `..` segment (either separator counts).
         """
         if not value:
             raise ValueError(f"{info.field_name} must not be empty")
-        if ".." in pathlib.PurePath(value).parts:
+        # Windows paths split on both separators: a `..\\x` written for Windows is caught on
+        # every platform.
+        if ".." in pathlib.PureWindowsPath(value).parts:
             raise ValueError(f'{info.field_name} must not contain ".." path segments: {value!r}')
+        return value
+
+    @field_validator("folder_save_dl", "folder_save_upscale", "folder_models")
+    @classmethod
+    def _check_subfolder(cls, value: str, info: "ValidationInfo") -> str:
+        """Keep the sub-folders relative: joined to an absolute path, `folder_data` is ignored.
+
+        Args:
+            value (str): The folder setting.
+            info (ValidationInfo): Which field is being validated (for the message).
+
+        Returns:
+            str: `value`, unchanged.
+
+        Raises:
+            ValueError: If it's an absolute path, or has a drive letter (Windows).
+        """
+        if pathlib.PureWindowsPath(value).anchor:
+            raise ValueError(f"{info.field_name} must be relative to folder_data: {value!r}")
         return value
 
     @field_validator("root_site")

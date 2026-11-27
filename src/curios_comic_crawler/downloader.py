@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import requests
 
+from curios_comic_crawler._atomic import atomic_target
 from curios_comic_crawler._http import CHUNK_SIZE_BYTES, stream_to_file
 
 if TYPE_CHECKING:
@@ -122,7 +123,7 @@ def _retry_delay(response: "requests.Response | None", attempt: int) -> float:
 
 
 def _save_image(response: "requests.Response", save_path: "pathlib.Path") -> None:
-    """Stream an image response to `save_path` through a temporary file.
+    """Stream an image response to `save_path` through a temporary file (see `atomic_target`).
 
     Args:
         response (requests.Response): A successful response carrying an image.
@@ -132,12 +133,8 @@ def _save_image(response: "requests.Response", save_path: "pathlib.Path") -> Non
         requests.RequestException: If the connection drops mid-download.
         OSError: If the file can't be written.
     """
-    partial_path = save_path.with_name(f"{save_path.name}.part")
-    try:
+    with atomic_target(save_path) as partial_path:
         stream_to_file(response, partial_path, CHUNK_SIZE_BYTES)
-        _ = partial_path.replace(save_path)
-    finally:
-        partial_path.unlink(missing_ok=True)  # left only if the download failed
 
 
 def _attempt(

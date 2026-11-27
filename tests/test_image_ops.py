@@ -180,3 +180,17 @@ def test_254_clusters_on_full_range_data(method: "PosteriseMethod") -> None:
 
     assert result.shape == data.shape
     assert np.unique(result).size == 254
+
+
+@pytest.mark.parametrize("nbr_cluster", [8, 16])
+def test_histogram_gives_every_level_asked_despite_a_gap(nbr_cluster: int) -> None:
+    """Line art (dark ink, white paper, nothing between) still gets every level asked for.
+
+    Uniform starting bins fall in the gap; left empty, they used to stay empty.
+    """
+    values = np.concatenate([np.arange(0, 12), np.arange(244, 256)]).astype(np.uint8)
+    data = np.random.default_rng(0).choice(values, size=(64, 64)).astype(np.uint8)
+
+    result = area_posterise(data, nbr_cluster, method="histogram")
+
+    assert len(np.unique(result)) == nbr_cluster

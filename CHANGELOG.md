@@ -7,7 +7,7 @@ follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- New `posterise_method` setting: `"histogram"` (default) runs k-means on the 256-value histogram (~0.003 s per page, no extra memory); `"kmeans"` keeps the previous per-pixel OpenCV k-means (~2.6 s per page, +189 MiB). Results differ by at most 9/255, in the light grays; gray levels are now rounded instead of truncated
+- New `posterise_method` setting: `"histogram"` (default) runs k-means on the 256-value histogram (~0.003 s per page, no extra memory); `"kmeans"` keeps the previous per-pixel OpenCV k-means (~2.6 s per page, +189 MiB). Results differ by a few levels in the light grays (8-13/255 at most on most pages); the histogram method always gives every level asked for; gray levels are now rounded instead of truncated
 - `--version` on all three commands
 - Documented exit codes: 0 success or end of the comic, 1 failure (download stopped on a network/server error, a page failed to upscale, invalid configuration, crash), 2 launcher run without `--mode` and without a terminal, 130 interrupted
 - The launcher's `--force-download`/`--force-upscale` given without `--mode` now answer their own question in the menu; only the other questions are asked
@@ -23,7 +23,8 @@ follows [Semantic Versioning](https://semver.org/).
 - Downloader: one HTTP session for the whole run; HTTP 429, 5xx and network errors (including a dropped connection mid-download) are retried, honouring `Retry-After` (capped at 60 s) or waiting 2 s then 4 s; only 404/410 mean a missing page; any other status or a non-image answer stops the run with exit code 1
 - The shipped `config.json` only advertises `"Accept-Encoding": "gzip, deflate"` (Brotli/zstd answers can't be decoded)
 - A download-only launcher run no longer loads OpenCV and ONNX Runtime (~94 MiB less)
-- A configuration error is reported as one message without a traceback
+- A configuration error is reported as one message without a traceback; unknown keys (e.g. a misspelt `posterize_method`) are now errors instead of being ignored
+- A model that can't be downloaded or verified is one error line and exit code 1, not a crash
 - Python 3.11 is the minimum supported version; the `dev` extra adds `pylint`, `radon` and `vulture`; the `convert` extra needs `torch>=2.5`
 - Test suite: 321 tests in ~1.6 s, with convention tests (docstrings, unused code, duplication, complexity) and a guard that fails any test opening a network connection
 - Old log runs are pruned by modification time instead of process ID
@@ -34,10 +35,12 @@ follows [Semantic Versioning](https://semver.org/).
 - The `opencv` engine failed on fresh installs: OpenCV 5 can't read its `.pb` models, so OpenCV is now pinned to `>=4.9,<5`
 - A single HTTP error (e.g. a 503 from a flaky server) silently ended the download as if the comic were complete, with exit code 0
 - An HTML error page could be saved as a `.jpg`, breaking every later upscale; non-image answers are now refused, and pages are written to a `.part` file renamed only when complete
-- Ctrl+C: every command now exits with code 130 and no traceback; the upscaler lets running pages finish, cancels the queued ones and never leaves a truncated page (which the next run would have skipped as done)
+- Ctrl+C: every command now exits with code 130 and no traceback (Ctrl+D at the launcher's questions too); workers ignore Ctrl+C from the moment they start; the upscaler lets running pages finish, cancels the queued ones and never leaves a truncated page (which the next run would have skipped as done)
 - An unexpected error on one page now stops the upscale run instead of processing every remaining page first
 - A failed page write was counted as done; a dead worker is now reported once, with its cause, instead of once per remaining page
-- `filename_variants` such as `"../x"` saved pages outside the download folder
+- `filename_variants` such as `"../x"`, and absolute or `..\x` sub-folders (`folder_save_dl`, `folder_save_upscale`, `folder_models`), wrote outside the data folder
+- After a worker died, a page written just before could be counted as failed; the interrupt summary now also counts failed pages
+- Temporary files of pages, models and the converter share one scheme, unique per process, so two runs on one folder can't mix their writes
 - Model downloads: two runs fetching the same model could corrupt it, and a failed download left a `.part` file behind; downloads now go to a unique temporary file, checked by SHA-256, then renamed
 - `tools/convert_onnx_model.py` loads weights with `weights_only=True`, streams the download instead of holding it in memory, and only replaces a bundled model once the export passed its check
 - The downloader no longer sleeps twice on a fully-missing page
