@@ -7,6 +7,10 @@
   fixtures, documented where they are defined).
 * Names are imported from the module that defines them, never through another
   module that happens to import them.
+* No string retypes the dotted name of a first-party module or attribute
+  (``"pkg.module"``, ``"pkg.module.attr"``): take it from the code (``module.__name__``,
+  ``module.logger.name``, ``monkeypatch.setattr(module, "attr", ...)``), or a rename leaves
+  it silently pointing at nothing.
 * No module, Python or JavaScript, grows past :data:`MAX_LINES`: a longer one is split by
   responsibility.
 """
@@ -33,6 +37,14 @@ MAX_LINES = 500
 #: JavaScript of the project (the vendored three.js is not ours).
 SCRIPT_SUFFIXES = (".js", ".mjs")
 VENDOR_DIR = "vendor"
+_DOTTED_NAME = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+")
+#: Strings allowed to spell a first-party module, each with the reason no attribute can give it.
+HARDCODED_NAME_ALLOWED = {
+    # The forkserver imports it before anything else; the parent can't import it to read its
+    # `__name__`: importing it makes the importing process ignore Ctrl+C.
+    "curios_comic_crawler._ignore_sigint",
+}
+_PLANTED_PACKAGE = next(iter(PACKAGES))
 _SECTION_ENTRY = re.compile(r"^\s{4}(\*{0,2}\w+)(?: \(.*?\))?:", re.MULTILINE)
 
 Function = ast.FunctionDef | ast.AsyncFunctionDef
@@ -289,6 +301,52 @@ def test_names_are_imported_from_their_defining_module(path: Path) -> None:
             for alias in node.names
             if alias.name not in names and module_path(f"{node.module}.{alias.name}") is None
         ]
+    assert not problems, "\n".join(problems)
+
+
+def names_first_party(text: str) -> bool:
+    """Tell whether a string is the dotted name of a first-party module or of an attribute of one.
+
+    Args:
+        text: A string constant from the code.
+
+    Returns:
+        Whether it spells ``pkg.module`` or ``pkg.module.attr`` for a module of :data:`PACKAGES`
+        (a bare package name is not flagged: :data:`PACKAGES` itself has to spell it).
+    """
+    if not _DOTTED_NAME.fullmatch(text):
+        return False
+    return module_path(text) is not None or module_path(text.rpartition(".")[0]) is not None
+
+
+@pytest.mark.parametrize(
+    ("text", "flagged"),
+    [
+        # Built, not written out: as literals they would trip the rule they test.
+        (f"{_PLANTED_PACKAGE}.upscaler", True),
+        (f"{_PLANTED_PACKAGE}.upscaler.run", True),
+        (_PLANTED_PACKAGE, False),
+        (f"{_PLANTED_PACKAGE}.upscaler is slow", False),
+        ("numpy.typing", False),
+        ("config.json", False),
+    ],
+)
+def test_planted_module_names_are_recognised(text: str, flagged: bool) -> None:
+    """The detector flags dotted first-party names only, not prose, files or other packages."""
+    assert names_first_party(text) is flagged
+
+
+@pytest.mark.parametrize("path", python_files(), ids=relative)
+def test_no_string_retypes_a_first_party_name(path: Path) -> None:
+    """Module, logger and monkeypatch-target names come from the code, not from a string."""
+    problems = [
+        f"line {node.lineno}: {node.value!r}: take it from the module instead"
+        for node in ast.walk(ast.parse(path.read_text()))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value not in HARDCODED_NAME_ALLOWED
+        and names_first_party(node.value)
+    ]
     assert not problems, "\n".join(problems)
 
 

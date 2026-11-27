@@ -264,9 +264,10 @@ pytest
   extra as well (`pip install -U -e ".[dev,convert]"`) for a clean run. Nothing else needs it.
 - `vulture` also lists imports used only in quoted type annotations (under `if TYPE_CHECKING:`);
   those are false positives -- unused imports are `ruff`'s job.
-- `pytest` runs 321 tests in about 1.6 s, with no network access: an autouse guard makes any
+- `pytest` runs in about 1.6 s, with no network access: an autouse guard makes any
   network connection fail the test. Besides behaviour, convention tests enforce Google-style
-  docstrings, no unused code, no duplicated code and a radon complexity of grade B or better.
+  docstrings, no unused code, no duplicated code, no string retyping a first-party module or
+  logger name, and a radon complexity of grade B or better.
 
 See [tools/README.md](tools/README.md) for the script that regenerates the bundled ONNX models
 from their official source weights -- not needed to use or develop the package, only if you're
